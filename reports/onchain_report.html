@@ -1,0 +1,1366 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>On-Chain Market Report</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #111827;
+      --muted: #64748b;
+      --line: #d9e2ec;
+      --bg: #f3f6f9;
+      --panel: #ffffff;
+      --panel-soft: #f8fafc;
+      --brand: #0f172a;
+      --accent: #2563eb;
+      --bull: #047857;
+      --bear: #b91c1c;
+      --neutral: #475569;
+      --shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+    }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.5;
+    }
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 24px auto 56px;
+    }
+    header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 24px;
+      align-items: center;
+      padding: 26px 28px;
+      background: var(--brand);
+      color: white;
+      border: 1px solid #1e293b;
+      box-shadow: var(--shadow);
+    }
+    h1, h2 { margin: 0; letter-spacing: 0; }
+    h1 { font-size: clamp(28px, 4vw, 44px); line-height: 1.05; }
+    h2 {
+      font-size: 13px;
+      margin-top: 30px;
+      margin-bottom: 12px;
+      color: var(--muted);
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .eyebrow {
+      color: #93c5fd;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .meta { color: #cbd5e1; margin-top: 10px; }
+    .state {
+      text-align: right;
+      min-width: 260px;
+    }
+    .state strong {
+      display: block;
+      font-size: 28px;
+      line-height: 1.1;
+    }
+    .score-pill {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.08);
+      font-weight: 700;
+      color: #e2e8f0;
+    }
+    .report-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      align-items: start;
+    }
+    .executive-grid {
+      display: grid;
+      grid-template-columns: minmax(300px, 0.85fr) minmax(420px, 1.15fr);
+      gap: 18px;
+      align-items: stretch;
+      margin-top: 18px;
+    }
+    .section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+      padding: 18px;
+      margin-top: 18px;
+    }
+    .section-title {
+      margin: 0 0 12px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .section-wide {
+      grid-column: 1 / -1;
+    }
+    .hero-panel {
+      background: #0f172a;
+      color: #e2e8f0;
+      border-color: #1e293b;
+      min-height: 320px;
+    }
+    .hero-panel .section-title { color: #93c5fd; }
+    .hero-regime {
+      font-size: clamp(34px, 5vw, 56px);
+      line-height: 0.95;
+      letter-spacing: 0;
+      color: #ffffff;
+      margin: 14px 0;
+    }
+    .hero-copy {
+      color: #cbd5e1;
+      max-width: 46rem;
+      margin: 0 0 18px;
+    }
+    .hero-kpis {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .hero-kpi {
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.06);
+      padding: 12px;
+    }
+    .hero-kpi span {
+      display: block;
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .hero-kpi b {
+      display: block;
+      color: #ffffff;
+      font-size: 18px;
+      margin-top: 4px;
+    }
+    .driver-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .driver {
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.06);
+      padding: 12px;
+    }
+    .driver span {
+      display: block;
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+    .driver strong {
+      color: #e2e8f0;
+      font-size: 13px;
+    }
+    .driver-1 { border-left: 3px solid #22c55e; }
+    .driver-0 { border-left: 3px solid #94a3b8; }
+    .driver--1 { border-left: 3px solid #ef4444; }
+    .focus-panel {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 18px;
+      align-items: center;
+    }
+    .regime-wheel {
+      position: relative;
+      width: 280px;
+      height: 280px;
+      margin: 0 auto;
+    }
+    .wheel-ring {
+      position: absolute;
+      inset: 32px;
+      border: 1px solid #dbe3ec;
+      border-radius: 50%;
+      background: radial-gradient(circle, #ffffff 0 45%, #f8fafc 46% 100%);
+    }
+    .wheel-core {
+      position: absolute;
+      left: 82px;
+      top: 88px;
+      width: 116px;
+      height: 104px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      background: #0f172a;
+      color: white;
+      padding: 8px;
+      box-shadow: 0 16px 34px rgba(15, 23, 42, 0.18);
+    }
+    .wheel-core span {
+      display: block;
+      color: #93c5fd;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .wheel-core strong {
+      display: block;
+      font-size: 13px;
+      line-height: 1.1;
+      margin-top: 4px;
+    }
+    .wheel-node {
+      position: absolute;
+      width: 104px;
+      min-height: 28px;
+      transform: translate(-50%, -50%);
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 5px 6px;
+      background: #eef2f6;
+      border: 1px solid #d9e2ec;
+      color: #475569;
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1.1;
+      text-transform: uppercase;
+    }
+    .wheel-node.active {
+      background: #2563eb;
+      border-color: #1d4ed8;
+      color: white;
+      box-shadow: 0 10px 24px rgba(37, 99, 235, 0.28);
+    }
+    .prob-row {
+      display: grid;
+      grid-template-columns: 152px 1fr 44px;
+      gap: 10px;
+      align-items: center;
+      margin: 9px 0;
+    }
+    .prob-label {
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .prob-track {
+      height: 10px;
+      background: #e2e8f0;
+      overflow: hidden;
+    }
+    .prob-track span {
+      display: block;
+      height: 100%;
+      background: #2563eb;
+    }
+    .prob-value {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-align: right;
+    }
+    .quality {
+      margin: 18px 0 0;
+      padding: 16px 18px;
+      background: #fff7ed;
+      border: 1px solid var(--line);
+      border-left: 4px solid #f59e0b;
+    }
+    .quality ul {
+      margin: 8px 0 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      table-layout: fixed;
+    }
+    th, td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+    th {
+      color: var(--muted);
+      font-weight: 800;
+      background: var(--panel-soft);
+      font-size: 12px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    tr:last-child td { border-bottom: 0; }
+    code {
+      font-size: 12px;
+      background: #eef2f6;
+      padding: 2px 4px;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      line-height: 1.5;
+      display: inline;
+    }
+    .rule-cell {
+      min-width: 150px;
+    }
+    .score { font-weight: 800; }
+    .score-1 { color: var(--bull); }
+    .score-0 { color: var(--neutral); }
+    .score--1 { color: var(--bear); }
+    .chart-wrap {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 18px;
+      margin-top: 18px;
+    }
+    .chart, .timeline {
+      width: 100%;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      display: block;
+    }
+    .axis-line {
+      stroke: #d0d5dd;
+      stroke-width: 1;
+      stroke-dasharray: 4 4;
+    }
+    .score-line {
+      fill: none;
+      stroke: #175cd3;
+      stroke-width: 3;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+    }
+    .spark {
+      width: 130px;
+      height: 34px;
+      display: block;
+    }
+    .spark polyline {
+      fill: none;
+      stroke: #175cd3;
+      stroke-width: 2;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+    }
+    .heatmap {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      gap: 8px 12px;
+      align-items: center;
+    }
+    .heatmap-cells {
+      display: grid;
+      grid-template-columns: repeat(60, minmax(8px, 1fr));
+      gap: 3px;
+      min-width: 540px;
+    }
+    .heatmap-cell {
+      height: 18px;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+    }
+    .heatmap-date {
+      color: var(--muted);
+      font-size: 9px;
+      text-align: center;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      height: 46px;
+      white-space: nowrap;
+    }
+    .heatmap-label {
+      color: var(--ink);
+      font-weight: 800;
+      font-size: 13px;
+    }
+    .heatmap-label-muted {
+      color: var(--muted);
+    }
+    .heatmap-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+    .heatmap-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .heatmap-legend i {
+      width: 12px;
+      height: 12px;
+      display: inline-block;
+      border: 1px solid rgba(15, 23, 42, 0.1);
+    }
+    .legend-bull { background: #16a34a; }
+    .legend-neutral { background: #94a3b8; }
+    .legend-caution { background: #f59e0b; }
+    .legend-bear { background: #dc2626; }
+    .heatmap-empty {
+      padding: 16px;
+      color: var(--muted);
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+    }
+    .interaction-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding: 12px;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+    }
+    .interaction-bar label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    select, button, input[type="range"] {
+      accent-color: var(--accent);
+    }
+    select, button {
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--ink);
+      padding: 7px 10px;
+      font: inherit;
+      font-size: 13px;
+    }
+    button {
+      cursor: pointer;
+      font-weight: 800;
+    }
+    .heatmap-cell {
+      cursor: crosshair;
+    }
+    .heatmap-cell.is-selected {
+      outline: 2px solid #0f172a;
+      outline-offset: 1px;
+    }
+    .is-hidden {
+      display: none !important;
+    }
+    .drilldown-panel {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 6px 14px;
+      margin-top: 14px;
+      padding: 14px;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+    }
+    .drilldown-panel span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      grid-row: span 2;
+    }
+    .drilldown-panel strong {
+      color: var(--ink);
+    }
+    .drilldown-panel p {
+      margin: 0;
+      color: var(--muted);
+    }
+    .scenario-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .scenario-control {
+      padding: 12px;
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+    }
+    .scenario-control label {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      margin-bottom: 8px;
+    }
+    .scenario-control input {
+      width: 100%;
+    }
+    .scenario-note {
+      margin-top: 14px;
+      padding: 12px;
+      border-left: 3px solid var(--accent);
+      background: #eff6ff;
+      color: #1e3a8a;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .compact-table td:first-child {
+      color: var(--muted);
+      font-weight: 700;
+      width: 34%;
+    }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .kpi {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      padding: 14px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+    }
+    .kpi b {
+      display: block;
+      font-size: 20px;
+      margin-top: 4px;
+    }
+    .regime-table td:first-child {
+      color: var(--muted);
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .regime-table td:last-child {
+      font-size: 18px;
+      font-weight: 800;
+      text-align: right;
+    }
+    .callout {
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+      padding: 12px 14px;
+      margin-top: 12px;
+      color: var(--muted);
+    }
+    .disclaimer {
+      background: #f8fafc;
+      border-left: 4px solid #64748b;
+    }
+    details.section {
+      padding: 0;
+    }
+    details.section summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 16px 18px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    details.section summary::-webkit-details-marker { display: none; }
+    details.section summary::after {
+      content: "Open";
+      float: right;
+      color: var(--accent);
+      font-size: 12px;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+    details.section[open] summary::after { content: "Close"; }
+    .details-body {
+      padding: 0 18px 18px;
+    }
+    .empty-note {
+      color: var(--muted);
+      padding: 12px;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+    }
+    ul {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+    @media (max-width: 760px) {
+      header { grid-template-columns: 1fr; }
+      .executive-grid { grid-template-columns: 1fr; }
+      .focus-panel { grid-template-columns: 1fr; }
+      .report-grid { grid-template-columns: 1fr; }
+      .hero-kpis, .driver-grid { grid-template-columns: 1fr; }
+      .scenario-grid { grid-template-columns: 1fr; }
+      .section-wide { grid-column: auto; }
+      .kpis { grid-template-columns: 1fr 1fr; }
+      .state { text-align: left; min-width: 0; }
+      table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <div class="eyebrow">Crypto Market Intelligence</div>
+        <h1>Market Regime Command Center</h1>
+        <div class="meta">Generated 2026-05-10 02:44 UTC | data source: dune</div>
+      </div>
+      <div class="state">
+        <strong>Liquidity Expansion</strong>
+        <div class="score-pill">Confidence High | On-chain +1/7</div>
+      </div>
+    </header>
+
+    <section class="section hero-panel">
+      <div class="section-title">Executive Read</div>
+      <div class="hero-regime">Liquidity Expansion</div>
+      <p class="hero-copy">The framework classifies the current setup through macro liquidity, capital flow, on-chain structure, and narrative rotation. Heavy rule detail is kept in the appendix below.</p>
+      <div class="hero-kpis">
+        <div class="hero-kpi"><span>Regime</span><b>Early Risk-On</b></div>
+        <div class="hero-kpi"><span>Confidence</span><b>High (86.2%)</b></div>
+        <div class="hero-kpi"><span>Top Transition</span><b>Liquidity Expansion 52%</b></div>
+      </div>
+      <div class="driver-grid"><div class="driver driver-1">
+          <span>Macro Liquidity</span>
+          <strong>M2: Money supply expanding</strong>
+        </div>
+<div class="driver driver-1">
+          <span>Capital Flow</span>
+          <strong>BTC ETF Flow Proxy: ETF bid supportive</strong>
+        </div></div>
+    </section>
+
+    <div class="executive-grid">
+      <section class="section focus-panel">
+        
+    <div class="regime-wheel">
+      <div class="wheel-ring"></div>
+      <div class="wheel-core">
+        <span>Current</span>
+        <strong>Liquidity Expansion</strong>
+      </div>
+      <div class="wheel-node active" style="left:140.0px; top:36.0px;" title="Liquidity Expansion">Liquidity Expansion</div><div class="wheel-node" style="left:221.3px; top:75.2px;" title="BTC-Led Risk-On">BTC-Led Risk-On</div><div class="wheel-node" style="left:241.4px; top:163.1px;" title="Early Rotation">Early Rotation</div><div class="wheel-node" style="left:185.1px; top:233.7px;" title="Narrative Expansion">Narrative Expansion</div><div class="wheel-node" style="left:94.9px; top:233.7px;" title="Exhaustion">Exhaustion</div><div class="wheel-node" style="left:38.6px; top:163.1px;" title="Transition">Transition</div><div class="wheel-node" style="left:58.7px; top:75.2px;" title="Compression">Compression</div>
+    </div>
+    
+        <div>
+          <div class="section-title">Market Ontology</div>
+          <p class="hero-copy" style="color: var(--muted);">A custom seven-state taxonomy: Liquidity Expansion, BTC-Led Risk-On, Early Rotation, Narrative Expansion, Exhaustion, Transition, and Compression.</p>
+          <div class="callout"><b>Closest historical analog:</b> 2019 Bear Recovery (73.5% similarity)</div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">Regime Probability Distribution</div>
+        <div class="prob-row">
+          <div class="prob-label">Liquidity Expansion</div>
+          <div class="prob-track"><span data-prob-bar="Liquidity Expansion" data-base="52" style="width:52%"></span></div>
+          <div class="prob-value" data-prob-value="Liquidity Expansion">52%</div>
+        </div>
+<div class="prob-row">
+          <div class="prob-label">BTC-Led Risk-On</div>
+          <div class="prob-track"><span data-prob-bar="BTC-Led Risk-On" data-base="50" style="width:50%"></span></div>
+          <div class="prob-value" data-prob-value="BTC-Led Risk-On">50%</div>
+        </div>
+<div class="prob-row">
+          <div class="prob-label">Transition</div>
+          <div class="prob-track"><span data-prob-bar="Transition" data-base="46" style="width:46%"></span></div>
+          <div class="prob-value" data-prob-value="Transition">46%</div>
+        </div>
+<div class="prob-row">
+          <div class="prob-label">Narrative Expansion</div>
+          <div class="prob-track"><span data-prob-bar="Narrative Expansion" data-base="42" style="width:42%"></span></div>
+          <div class="prob-value" data-prob-value="Narrative Expansion">42%</div>
+        </div>
+<div class="prob-row">
+          <div class="prob-label">Early Rotation</div>
+          <div class="prob-track"><span data-prob-bar="Early Rotation" data-base="36" style="width:36%"></span></div>
+          <div class="prob-value" data-prob-value="Early Rotation">36%</div>
+        </div>
+<div class="prob-row">
+          <div class="prob-label">Exhaustion</div>
+          <div class="prob-track"><span data-prob-bar="Exhaustion" data-base="28" style="width:28%"></span></div>
+          <div class="prob-value" data-prob-value="Exhaustion">28%</div>
+        </div>
+<div class="prob-row">
+          <div class="prob-label">Compression</div>
+          <div class="prob-track"><span data-prob-bar="Compression" data-base="12" style="width:12%"></span></div>
+          <div class="prob-value" data-prob-value="Compression">12%</div>
+        </div>
+        <div class="scenario-grid" id="scenarioEngine">
+          <div class="scenario-control">
+            <label>BTC dominance <span id="btcDominanceValue">54%</span></label>
+            <input type="range" min="45" max="65" value="54" id="btcDominanceSlider">
+          </div>
+          <div class="scenario-control">
+            <label>Stablecoin growth <span id="stableGrowthValue">0%</span></label>
+            <input type="range" min="-5" max="8" value="0" id="stableGrowthSlider">
+          </div>
+          <div class="scenario-control">
+            <label>Macro impulse <span id="macroImpulseValue">0</span></label>
+            <input type="range" min="-2" max="2" value="0" id="macroImpulseSlider">
+          </div>
+          <div class="scenario-control">
+            <label>Narrative strength <span id="narrativeImpulseValue">0</span></label>
+            <input type="range" min="-2" max="2" value="0" id="narrativeImpulseSlider">
+          </div>
+        </div>
+        <div class="scenario-note" id="scenarioRead">Scenario engine: adjust assumptions to model regime-transition pressure.</div>
+      </section>
+    </div>
+
+    <section class="section section-wide">
+    <h2>Signal Heatmap</h2>
+    <div class="chart-wrap">
+      
+    <div class="interaction-bar">
+      <label>Timeframe
+        <select id="heatmapTimeframe">
+          <option value="60" selected>60D</option>
+          <option value="30">30D</option>
+          <option value="14">14D</option>
+        </select>
+      </label>
+      <label>Signal
+        <select id="heatmapSignal">
+          <option value="all" selected>All signals</option>
+          <option value="market-state">Market State</option><option value="total-score">Total Score</option><option value="sopr">SOPR</option><option value="rhodl">RHODL</option><option value="exchange-flow">Exchange Flow</option><option value="lth-sth">LTH/STH</option><option value="miner">Miner</option><option value="btc-momentum">BTC Momentum</option>
+        </select>
+      </label>
+      <button type="button" id="resetHeatmap">Reset</button>
+    </div>
+    <div class="heatmap-legend">
+      <span><i class="legend-bull"></i>Bullish</span>
+      <span><i class="legend-neutral"></i>Neutral</span>
+      <span><i class="legend-caution"></i>Caution</span>
+      <span><i class="legend-bear"></i>Bearish</span>
+    </div>
+    <div class="heatmap">
+      <div class="heatmap-label heatmap-label-muted">Date</div>
+      <div class="heatmap-cells"><div class="heatmap-date" data-day="0">04-14</div><div class="heatmap-date" data-day="1">04-15</div><div class="heatmap-date" data-day="2">04-16</div><div class="heatmap-date" data-day="3">04-17</div><div class="heatmap-date" data-day="4">04-18</div><div class="heatmap-date" data-day="5">04-19</div><div class="heatmap-date" data-day="6">04-20</div><div class="heatmap-date" data-day="7">04-21</div><div class="heatmap-date" data-day="8">04-22</div><div class="heatmap-date" data-day="9">04-23</div><div class="heatmap-date" data-day="10">04-24</div><div class="heatmap-date" data-day="11">04-25</div><div class="heatmap-date" data-day="12">04-26</div><div class="heatmap-date" data-day="13">04-27</div><div class="heatmap-date" data-day="14">04-28</div><div class="heatmap-date" data-day="15">04-29</div><div class="heatmap-date" data-day="16">04-30</div><div class="heatmap-date" data-day="17">05-01</div><div class="heatmap-date" data-day="18">05-02</div><div class="heatmap-date" data-day="19">05-03</div><div class="heatmap-date" data-day="20">05-04</div><div class="heatmap-date" data-day="21">05-05</div><div class="heatmap-date" data-day="22">05-06</div><div class="heatmap-date" data-day="23">05-07</div><div class="heatmap-date" data-day="24">05-08</div></div>
+      <div class="heatmap-label" data-row-label="market-state">Market State</div><div class="heatmap-cells" data-row-cells="market-state"><div class="heatmap-cell" style="background:#12b76a" data-day="0" data-row="market-state" data-label="Market State" data-date="2026-04-14" data-value="BULLISH TREND" title="2026-04-14 | Market State: BULLISH TREND"></div><div class="heatmap-cell" style="background:#84cc16" data-day="1" data-row="market-state" data-label="Market State" data-date="2026-04-15" data-value="MILD BULLISH" title="2026-04-15 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="2" data-row="market-state" data-label="Market State" data-date="2026-04-16" data-value="MILD BULLISH" title="2026-04-16 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="3" data-row="market-state" data-label="Market State" data-date="2026-04-17" data-value="MILD BULLISH" title="2026-04-17 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="4" data-row="market-state" data-label="Market State" data-date="2026-04-18" data-value="MILD BULLISH" title="2026-04-18 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#12b76a" data-day="5" data-row="market-state" data-label="Market State" data-date="2026-04-19" data-value="BULLISH TREND" title="2026-04-19 | Market State: BULLISH TREND"></div><div class="heatmap-cell" style="background:#84cc16" data-day="6" data-row="market-state" data-label="Market State" data-date="2026-04-20" data-value="MILD BULLISH" title="2026-04-20 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="7" data-row="market-state" data-label="Market State" data-date="2026-04-21" data-value="MILD BULLISH" title="2026-04-21 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#12b76a" data-day="8" data-row="market-state" data-label="Market State" data-date="2026-04-22" data-value="BULLISH TREND" title="2026-04-22 | Market State: BULLISH TREND"></div><div class="heatmap-cell" style="background:#12b76a" data-day="9" data-row="market-state" data-label="Market State" data-date="2026-04-23" data-value="BULLISH TREND" title="2026-04-23 | Market State: BULLISH TREND"></div><div class="heatmap-cell" style="background:#84cc16" data-day="10" data-row="market-state" data-label="Market State" data-date="2026-04-24" data-value="MILD BULLISH" title="2026-04-24 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="11" data-row="market-state" data-label="Market State" data-date="2026-04-25" data-value="MILD BULLISH" title="2026-04-25 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="12" data-row="market-state" data-label="Market State" data-date="2026-04-26" data-value="MILD BULLISH" title="2026-04-26 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="13" data-row="market-state" data-label="Market State" data-date="2026-04-27" data-value="MILD BULLISH" title="2026-04-27 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="14" data-row="market-state" data-label="Market State" data-date="2026-04-28" data-value="MILD BULLISH" title="2026-04-28 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="15" data-row="market-state" data-label="Market State" data-date="2026-04-29" data-value="MILD BULLISH" title="2026-04-29 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="16" data-row="market-state" data-label="Market State" data-date="2026-04-30" data-value="MILD BULLISH" title="2026-04-30 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="17" data-row="market-state" data-label="Market State" data-date="2026-05-01" data-value="MILD BULLISH" title="2026-05-01 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="18" data-row="market-state" data-label="Market State" data-date="2026-05-02" data-value="MILD BULLISH" title="2026-05-02 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="19" data-row="market-state" data-label="Market State" data-date="2026-05-03" data-value="MILD BULLISH" title="2026-05-03 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="20" data-row="market-state" data-label="Market State" data-date="2026-05-04" data-value="MILD BULLISH" title="2026-05-04 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="21" data-row="market-state" data-label="Market State" data-date="2026-05-05" data-value="MILD BULLISH" title="2026-05-05 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="22" data-row="market-state" data-label="Market State" data-date="2026-05-06" data-value="MILD BULLISH" title="2026-05-06 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#84cc16" data-day="23" data-row="market-state" data-label="Market State" data-date="2026-05-07" data-value="MILD BULLISH" title="2026-05-07 | Market State: MILD BULLISH"></div><div class="heatmap-cell" style="background:#667085" data-day="24" data-row="market-state" data-label="Market State" data-date="2026-05-08" data-value="NEUTRAL / SIDEWAYS" title="2026-05-08 | Market State: NEUTRAL / SIDEWAYS"></div></div><div class="heatmap-label" data-row-label="total-score">Total Score</div><div class="heatmap-cells" data-row-cells="total-score"><div class="heatmap-cell" style="background:#047857" data-day="0" data-row="total-score" data-label="Total Score" data-date="2026-04-14" data-value="+0.40" title="2026-04-14 | Total Score: +0.40"></div><div class="heatmap-cell" style="background:#84cc16" data-day="1" data-row="total-score" data-label="Total Score" data-date="2026-04-15" data-value="+0.17" title="2026-04-15 | Total Score: +0.17"></div><div class="heatmap-cell" style="background:#84cc16" data-day="2" data-row="total-score" data-label="Total Score" data-date="2026-04-16" data-value="+0.33" title="2026-04-16 | Total Score: +0.33"></div><div class="heatmap-cell" style="background:#84cc16" data-day="3" data-row="total-score" data-label="Total Score" data-date="2026-04-17" data-value="+0.33" title="2026-04-17 | Total Score: +0.33"></div><div class="heatmap-cell" style="background:#84cc16" data-day="4" data-row="total-score" data-label="Total Score" data-date="2026-04-18" data-value="+0.33" title="2026-04-18 | Total Score: +0.33"></div><div class="heatmap-cell" style="background:#047857" data-day="5" data-row="total-score" data-label="Total Score" data-date="2026-04-19" data-value="+0.50" title="2026-04-19 | Total Score: +0.50"></div><div class="heatmap-cell" style="background:#84cc16" data-day="6" data-row="total-score" data-label="Total Score" data-date="2026-04-20" data-value="+0.33" title="2026-04-20 | Total Score: +0.33"></div><div class="heatmap-cell" style="background:#84cc16" data-day="7" data-row="total-score" data-label="Total Score" data-date="2026-04-21" data-value="+0.17" title="2026-04-21 | Total Score: +0.17"></div><div class="heatmap-cell" style="background:#047857" data-day="8" data-row="total-score" data-label="Total Score" data-date="2026-04-22" data-value="+0.50" title="2026-04-22 | Total Score: +0.50"></div><div class="heatmap-cell" style="background:#047857" data-day="9" data-row="total-score" data-label="Total Score" data-date="2026-04-23" data-value="+0.50" title="2026-04-23 | Total Score: +0.50"></div><div class="heatmap-cell" style="background:#84cc16" data-day="10" data-row="total-score" data-label="Total Score" data-date="2026-04-24" data-value="+0.17" title="2026-04-24 | Total Score: +0.17"></div><div class="heatmap-cell" style="background:#84cc16" data-day="11" data-row="total-score" data-label="Total Score" data-date="2026-04-25" data-value="+0.17" title="2026-04-25 | Total Score: +0.17"></div><div class="heatmap-cell" style="background:#84cc16" data-day="12" data-row="total-score" data-label="Total Score" data-date="2026-04-26" data-value="+0.33" title="2026-04-26 | Total Score: +0.33"></div><div class="heatmap-cell" style="background:#84cc16" data-day="13" data-row="total-score" data-label="Total Score" data-date="2026-04-27" data-value="+0.17" title="2026-04-27 | Total Score: +0.17"></div><div class="heatmap-cell" style="background:#84cc16" data-day="14" data-row="total-score" data-label="Total Score" data-date="2026-04-28" data-value="+0.17" title="2026-04-28 | Total Score: +0.17"></div><div class="heatmap-cell" style="background:#84cc16" data-day="15" data-row="total-score" data-label="Total Score" data-date="2026-04-29" data-value="+0.17" title="2026-04-29 | Total Score: +0.17"></div><div class="heatmap-cell" style="background:#84cc16" data-day="16" data-row="total-score" data-label="Total Score" data-date="2026-04-30" data-value="+0.17" title="2026-04-30 | Total Score: +0.17"></div><div class="heatmap-cell" style="background:#84cc16" data-day="17" data-row="total-score" data-label="Total Score" data-date="2026-05-01" data-value="+0.17" title="2026-05-01 | Total Score: +0.17"></div><div class="heatmap-cell" style="background:#84cc16" data-day="18" data-row="total-score" data-label="Total Score" data-date="2026-05-02" data-value="+0.17" title="2026-05-02 | Total Score: +0.17"></div><div class="heatmap-cell" style="background:#84cc16" data-day="19" data-row="total-score" data-label="Total Score" data-date="2026-05-03" data-value="+0.17" title="2026-05-03 | Total Score: +0.17"></div><div class="heatmap-cell" style="background:#84cc16" data-day="20" data-row="total-score" data-label="Total Score" data-date="2026-05-04" data-value="+0.17" title="2026-05-04 | Total Score: +0.17"></div><div class="heatmap-cell" style="background:#84cc16" data-day="21" data-row="total-score" data-label="Total Score" data-date="2026-05-05" data-value="+0.33" title="2026-05-05 | Total Score: +0.33"></div><div class="heatmap-cell" style="background:#84cc16" data-day="22" data-row="total-score" data-label="Total Score" data-date="2026-05-06" data-value="+0.17" title="2026-05-06 | Total Score: +0.17"></div><div class="heatmap-cell" style="background:#84cc16" data-day="23" data-row="total-score" data-label="Total Score" data-date="2026-05-07" data-value="+0.17" title="2026-05-07 | Total Score: +0.17"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="24" data-row="total-score" data-label="Total Score" data-date="2026-05-08" data-value="+0.00" title="2026-05-08 | Total Score: +0.00"></div></div><div class="heatmap-label" data-row-label="sopr">SOPR</div><div class="heatmap-cells" data-row-cells="sopr"><div class="heatmap-cell" style="background:#94a3b8" data-day="0" data-row="sopr" data-label="SOPR" data-date="2026-04-14" data-value="NEUT" title="2026-04-14 | SOPR: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="1" data-row="sopr" data-label="SOPR" data-date="2026-04-15" data-value="NEUT" title="2026-04-15 | SOPR: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="2" data-row="sopr" data-label="SOPR" data-date="2026-04-16" data-value="NEUT" title="2026-04-16 | SOPR: NEUT"></div><div class="heatmap-cell" style="background:#16a34a" data-day="3" data-row="sopr" data-label="SOPR" data-date="2026-04-17" data-value="BULL" title="2026-04-17 | SOPR: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="4" data-row="sopr" data-label="SOPR" data-date="2026-04-18" data-value="BULL" title="2026-04-18 | SOPR: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="5" data-row="sopr" data-label="SOPR" data-date="2026-04-19" data-value="BULL" title="2026-04-19 | SOPR: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="6" data-row="sopr" data-label="SOPR" data-date="2026-04-20" data-value="BULL" title="2026-04-20 | SOPR: BULL"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="7" data-row="sopr" data-label="SOPR" data-date="2026-04-21" data-value="NEUT" title="2026-04-21 | SOPR: NEUT"></div><div class="heatmap-cell" style="background:#16a34a" data-day="8" data-row="sopr" data-label="SOPR" data-date="2026-04-22" data-value="BULL" title="2026-04-22 | SOPR: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="9" data-row="sopr" data-label="SOPR" data-date="2026-04-23" data-value="BULL" title="2026-04-23 | SOPR: BULL"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="10" data-row="sopr" data-label="SOPR" data-date="2026-04-24" data-value="NEUT" title="2026-04-24 | SOPR: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="11" data-row="sopr" data-label="SOPR" data-date="2026-04-25" data-value="NEUT" title="2026-04-25 | SOPR: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="12" data-row="sopr" data-label="SOPR" data-date="2026-04-26" data-value="NEUT" title="2026-04-26 | SOPR: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="13" data-row="sopr" data-label="SOPR" data-date="2026-04-27" data-value="NEUT" title="2026-04-27 | SOPR: NEUT"></div><div class="heatmap-cell" style="background:#16a34a" data-day="14" data-row="sopr" data-label="SOPR" data-date="2026-04-28" data-value="BULL" title="2026-04-28 | SOPR: BULL"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="15" data-row="sopr" data-label="SOPR" data-date="2026-04-29" data-value="NEUT" title="2026-04-29 | SOPR: NEUT"></div><div class="heatmap-cell" style="background:#16a34a" data-day="16" data-row="sopr" data-label="SOPR" data-date="2026-04-30" data-value="BULL" title="2026-04-30 | SOPR: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="17" data-row="sopr" data-label="SOPR" data-date="2026-05-01" data-value="BULL" title="2026-05-01 | SOPR: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="18" data-row="sopr" data-label="SOPR" data-date="2026-05-02" data-value="BULL" title="2026-05-02 | SOPR: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="19" data-row="sopr" data-label="SOPR" data-date="2026-05-03" data-value="BULL" title="2026-05-03 | SOPR: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="20" data-row="sopr" data-label="SOPR" data-date="2026-05-04" data-value="BULL" title="2026-05-04 | SOPR: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="21" data-row="sopr" data-label="SOPR" data-date="2026-05-05" data-value="BULL" title="2026-05-05 | SOPR: BULL"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="22" data-row="sopr" data-label="SOPR" data-date="2026-05-06" data-value="NEUT" title="2026-05-06 | SOPR: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="23" data-row="sopr" data-label="SOPR" data-date="2026-05-07" data-value="NEUT" title="2026-05-07 | SOPR: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="24" data-row="sopr" data-label="SOPR" data-date="2026-05-08" data-value="NEUT" title="2026-05-08 | SOPR: NEUT"></div></div><div class="heatmap-label" data-row-label="rhodl">RHODL</div><div class="heatmap-cells" data-row-cells="rhodl"><div class="heatmap-cell" style="background:#94a3b8" data-day="0" data-row="rhodl" data-label="RHODL" data-date="2026-04-14" data-value="NEUT" title="2026-04-14 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="1" data-row="rhodl" data-label="RHODL" data-date="2026-04-15" data-value="NEUT" title="2026-04-15 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="2" data-row="rhodl" data-label="RHODL" data-date="2026-04-16" data-value="NEUT" title="2026-04-16 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="3" data-row="rhodl" data-label="RHODL" data-date="2026-04-17" data-value="NEUT" title="2026-04-17 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="4" data-row="rhodl" data-label="RHODL" data-date="2026-04-18" data-value="NEUT" title="2026-04-18 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="5" data-row="rhodl" data-label="RHODL" data-date="2026-04-19" data-value="NEUT" title="2026-04-19 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="6" data-row="rhodl" data-label="RHODL" data-date="2026-04-20" data-value="NEUT" title="2026-04-20 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="7" data-row="rhodl" data-label="RHODL" data-date="2026-04-21" data-value="NEUT" title="2026-04-21 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="8" data-row="rhodl" data-label="RHODL" data-date="2026-04-22" data-value="NEUT" title="2026-04-22 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="9" data-row="rhodl" data-label="RHODL" data-date="2026-04-23" data-value="NEUT" title="2026-04-23 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="10" data-row="rhodl" data-label="RHODL" data-date="2026-04-24" data-value="NEUT" title="2026-04-24 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="11" data-row="rhodl" data-label="RHODL" data-date="2026-04-25" data-value="NEUT" title="2026-04-25 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="12" data-row="rhodl" data-label="RHODL" data-date="2026-04-26" data-value="NEUT" title="2026-04-26 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="13" data-row="rhodl" data-label="RHODL" data-date="2026-04-27" data-value="NEUT" title="2026-04-27 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="14" data-row="rhodl" data-label="RHODL" data-date="2026-04-28" data-value="NEUT" title="2026-04-28 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="15" data-row="rhodl" data-label="RHODL" data-date="2026-04-29" data-value="NEUT" title="2026-04-29 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="16" data-row="rhodl" data-label="RHODL" data-date="2026-04-30" data-value="NEUT" title="2026-04-30 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="17" data-row="rhodl" data-label="RHODL" data-date="2026-05-01" data-value="NEUT" title="2026-05-01 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="18" data-row="rhodl" data-label="RHODL" data-date="2026-05-02" data-value="NEUT" title="2026-05-02 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="19" data-row="rhodl" data-label="RHODL" data-date="2026-05-03" data-value="NEUT" title="2026-05-03 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="20" data-row="rhodl" data-label="RHODL" data-date="2026-05-04" data-value="NEUT" title="2026-05-04 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="21" data-row="rhodl" data-label="RHODL" data-date="2026-05-05" data-value="NEUT" title="2026-05-05 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="22" data-row="rhodl" data-label="RHODL" data-date="2026-05-06" data-value="NEUT" title="2026-05-06 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="23" data-row="rhodl" data-label="RHODL" data-date="2026-05-07" data-value="NEUT" title="2026-05-07 | RHODL: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="24" data-row="rhodl" data-label="RHODL" data-date="2026-05-08" data-value="NEUT" title="2026-05-08 | RHODL: NEUT"></div></div><div class="heatmap-label" data-row-label="exchange-flow">Exchange Flow</div><div class="heatmap-cells" data-row-cells="exchange-flow"><div class="heatmap-cell" style="background:#16a34a" data-day="0" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-14" data-value="BULL" title="2026-04-14 | Exchange Flow: BULL"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="1" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-15" data-value="NEUT" title="2026-04-15 | Exchange Flow: NEUT"></div><div class="heatmap-cell" style="background:#16a34a" data-day="2" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-16" data-value="BULL" title="2026-04-16 | Exchange Flow: BULL"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="3" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-17" data-value="NEUT" title="2026-04-17 | Exchange Flow: NEUT"></div><div class="heatmap-cell" style="background:#16a34a" data-day="4" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-18" data-value="BULL" title="2026-04-18 | Exchange Flow: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="5" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-19" data-value="BULL" title="2026-04-19 | Exchange Flow: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="6" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-20" data-value="BULL" title="2026-04-20 | Exchange Flow: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="7" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-21" data-value="BULL" title="2026-04-21 | Exchange Flow: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="8" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-22" data-value="BULL" title="2026-04-22 | Exchange Flow: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="9" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-23" data-value="BULL" title="2026-04-23 | Exchange Flow: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="10" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-24" data-value="BULL" title="2026-04-24 | Exchange Flow: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="11" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-25" data-value="BULL" title="2026-04-25 | Exchange Flow: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="12" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-26" data-value="BULL" title="2026-04-26 | Exchange Flow: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="13" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-27" data-value="BULL" title="2026-04-27 | Exchange Flow: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="14" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-28" data-value="BULL" title="2026-04-28 | Exchange Flow: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="15" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-29" data-value="BULL" title="2026-04-29 | Exchange Flow: BULL"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="16" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-04-30" data-value="NEUT" title="2026-04-30 | Exchange Flow: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="17" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-05-01" data-value="NEUT" title="2026-05-01 | Exchange Flow: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="18" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-05-02" data-value="NEUT" title="2026-05-02 | Exchange Flow: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="19" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-05-03" data-value="NEUT" title="2026-05-03 | Exchange Flow: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="20" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-05-04" data-value="NEUT" title="2026-05-04 | Exchange Flow: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="21" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-05-05" data-value="NEUT" title="2026-05-05 | Exchange Flow: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="22" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-05-06" data-value="NEUT" title="2026-05-06 | Exchange Flow: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="23" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-05-07" data-value="NEUT" title="2026-05-07 | Exchange Flow: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="24" data-row="exchange-flow" data-label="Exchange Flow" data-date="2026-05-08" data-value="NEUT" title="2026-05-08 | Exchange Flow: NEUT"></div></div><div class="heatmap-label" data-row-label="lth-sth">LTH/STH</div><div class="heatmap-cells" data-row-cells="lth-sth"><div class="heatmap-cell" style="background:#16a34a" data-day="0" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-14" data-value="BULL" title="2026-04-14 | LTH/STH: BULL"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="1" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-15" data-value="NEUT" title="2026-04-15 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="2" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-16" data-value="NEUT" title="2026-04-16 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="3" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-17" data-value="NEUT" title="2026-04-17 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="4" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-18" data-value="NEUT" title="2026-04-18 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="5" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-19" data-value="NEUT" title="2026-04-19 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="6" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-20" data-value="NEUT" title="2026-04-20 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="7" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-21" data-value="NEUT" title="2026-04-21 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="8" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-22" data-value="NEUT" title="2026-04-22 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="9" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-23" data-value="NEUT" title="2026-04-23 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="10" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-24" data-value="NEUT" title="2026-04-24 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="11" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-25" data-value="NEUT" title="2026-04-25 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="12" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-26" data-value="NEUT" title="2026-04-26 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="13" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-27" data-value="NEUT" title="2026-04-27 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#dc2626" data-day="14" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-28" data-value="BEAR" title="2026-04-28 | LTH/STH: BEAR"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="15" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-29" data-value="NEUT" title="2026-04-29 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="16" data-row="lth-sth" data-label="LTH/STH" data-date="2026-04-30" data-value="NEUT" title="2026-04-30 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="17" data-row="lth-sth" data-label="LTH/STH" data-date="2026-05-01" data-value="NEUT" title="2026-05-01 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="18" data-row="lth-sth" data-label="LTH/STH" data-date="2026-05-02" data-value="NEUT" title="2026-05-02 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="19" data-row="lth-sth" data-label="LTH/STH" data-date="2026-05-03" data-value="NEUT" title="2026-05-03 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="20" data-row="lth-sth" data-label="LTH/STH" data-date="2026-05-04" data-value="NEUT" title="2026-05-04 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="21" data-row="lth-sth" data-label="LTH/STH" data-date="2026-05-05" data-value="NEUT" title="2026-05-05 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="22" data-row="lth-sth" data-label="LTH/STH" data-date="2026-05-06" data-value="NEUT" title="2026-05-06 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="23" data-row="lth-sth" data-label="LTH/STH" data-date="2026-05-07" data-value="NEUT" title="2026-05-07 | LTH/STH: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="24" data-row="lth-sth" data-label="LTH/STH" data-date="2026-05-08" data-value="NEUT" title="2026-05-08 | LTH/STH: NEUT"></div></div><div class="heatmap-label" data-row-label="miner">Miner</div><div class="heatmap-cells" data-row-cells="miner"><div class="heatmap-cell" style="background:#94a3b8" data-day="0" data-row="miner" data-label="Miner" data-date="2026-04-14" data-value="NEUT" title="2026-04-14 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="1" data-row="miner" data-label="Miner" data-date="2026-04-15" data-value="NEUT" title="2026-04-15 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="2" data-row="miner" data-label="Miner" data-date="2026-04-16" data-value="NEUT" title="2026-04-16 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="3" data-row="miner" data-label="Miner" data-date="2026-04-17" data-value="NEUT" title="2026-04-17 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="4" data-row="miner" data-label="Miner" data-date="2026-04-18" data-value="NEUT" title="2026-04-18 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="5" data-row="miner" data-label="Miner" data-date="2026-04-19" data-value="NEUT" title="2026-04-19 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="6" data-row="miner" data-label="Miner" data-date="2026-04-20" data-value="NEUT" title="2026-04-20 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="7" data-row="miner" data-label="Miner" data-date="2026-04-21" data-value="NEUT" title="2026-04-21 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="8" data-row="miner" data-label="Miner" data-date="2026-04-22" data-value="NEUT" title="2026-04-22 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="9" data-row="miner" data-label="Miner" data-date="2026-04-23" data-value="NEUT" title="2026-04-23 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="10" data-row="miner" data-label="Miner" data-date="2026-04-24" data-value="NEUT" title="2026-04-24 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="11" data-row="miner" data-label="Miner" data-date="2026-04-25" data-value="NEUT" title="2026-04-25 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="12" data-row="miner" data-label="Miner" data-date="2026-04-26" data-value="NEUT" title="2026-04-26 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="13" data-row="miner" data-label="Miner" data-date="2026-04-27" data-value="NEUT" title="2026-04-27 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="14" data-row="miner" data-label="Miner" data-date="2026-04-28" data-value="NEUT" title="2026-04-28 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="15" data-row="miner" data-label="Miner" data-date="2026-04-29" data-value="NEUT" title="2026-04-29 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="16" data-row="miner" data-label="Miner" data-date="2026-04-30" data-value="NEUT" title="2026-04-30 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="17" data-row="miner" data-label="Miner" data-date="2026-05-01" data-value="NEUT" title="2026-05-01 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="18" data-row="miner" data-label="Miner" data-date="2026-05-02" data-value="NEUT" title="2026-05-02 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="19" data-row="miner" data-label="Miner" data-date="2026-05-03" data-value="NEUT" title="2026-05-03 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="20" data-row="miner" data-label="Miner" data-date="2026-05-04" data-value="NEUT" title="2026-05-04 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="21" data-row="miner" data-label="Miner" data-date="2026-05-05" data-value="NEUT" title="2026-05-05 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="22" data-row="miner" data-label="Miner" data-date="2026-05-06" data-value="NEUT" title="2026-05-06 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="23" data-row="miner" data-label="Miner" data-date="2026-05-07" data-value="NEUT" title="2026-05-07 | Miner: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="24" data-row="miner" data-label="Miner" data-date="2026-05-08" data-value="NEUT" title="2026-05-08 | Miner: NEUT"></div></div><div class="heatmap-label" data-row-label="btc-momentum">BTC Momentum</div><div class="heatmap-cells" data-row-cells="btc-momentum"><div class="heatmap-cell" style="background:#e2e8f0" data-day="0" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-14" data-value="n/a" title="2026-04-14 | BTC Momentum: n/a"></div><div class="heatmap-cell" style="background:#16a34a" data-day="1" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-15" data-value="BULL" title="2026-04-15 | BTC Momentum: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="2" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-16" data-value="BULL" title="2026-04-16 | BTC Momentum: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="3" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-17" data-value="BULL" title="2026-04-17 | BTC Momentum: BULL"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="4" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-18" data-value="NEUT" title="2026-04-18 | BTC Momentum: NEUT"></div><div class="heatmap-cell" style="background:#16a34a" data-day="5" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-19" data-value="BULL" title="2026-04-19 | BTC Momentum: BULL"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="6" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-20" data-value="NEUT" title="2026-04-20 | BTC Momentum: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="7" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-21" data-value="NEUT" title="2026-04-21 | BTC Momentum: NEUT"></div><div class="heatmap-cell" style="background:#16a34a" data-day="8" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-22" data-value="BULL" title="2026-04-22 | BTC Momentum: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="9" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-23" data-value="BULL" title="2026-04-23 | BTC Momentum: BULL"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="10" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-24" data-value="NEUT" title="2026-04-24 | BTC Momentum: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="11" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-25" data-value="NEUT" title="2026-04-25 | BTC Momentum: NEUT"></div><div class="heatmap-cell" style="background:#16a34a" data-day="12" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-26" data-value="BULL" title="2026-04-26 | BTC Momentum: BULL"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="13" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-27" data-value="NEUT" title="2026-04-27 | BTC Momentum: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="14" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-28" data-value="NEUT" title="2026-04-28 | BTC Momentum: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="15" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-29" data-value="NEUT" title="2026-04-29 | BTC Momentum: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="16" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-04-30" data-value="NEUT" title="2026-04-30 | BTC Momentum: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="17" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-05-01" data-value="NEUT" title="2026-05-01 | BTC Momentum: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="18" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-05-02" data-value="NEUT" title="2026-05-02 | BTC Momentum: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="19" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-05-03" data-value="NEUT" title="2026-05-03 | BTC Momentum: NEUT"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="20" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-05-04" data-value="NEUT" title="2026-05-04 | BTC Momentum: NEUT"></div><div class="heatmap-cell" style="background:#16a34a" data-day="21" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-05-05" data-value="BULL" title="2026-05-05 | BTC Momentum: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="22" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-05-06" data-value="BULL" title="2026-05-06 | BTC Momentum: BULL"></div><div class="heatmap-cell" style="background:#16a34a" data-day="23" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-05-07" data-value="BULL" title="2026-05-07 | BTC Momentum: BULL"></div><div class="heatmap-cell" style="background:#94a3b8" data-day="24" data-row="btc-momentum" data-label="BTC Momentum" data-date="2026-05-08" data-value="NEUT" title="2026-05-08 | BTC Momentum: NEUT"></div></div>
+    </div>
+    <div class="drilldown-panel" id="heatmapDrilldown">
+      <span>Drill-down</span>
+      <strong>Click any heatmap cell</strong>
+      <p>Date, signal, and vote will appear here.</p>
+    </div>
+    
+    </div>
+    </section>
+
+    <section class="section">
+    <h2>Narrative Rotation Heatmap</h2>
+    <table>
+      <thead>
+        <tr><th>Narrative</th><th>24H Change</th><th>Strength</th></tr>
+      </thead>
+      <tbody><tr>
+            <td>RWA</td>
+            <td>-0.3%</td>
+            <td>Neutral</td>
+        </tr>
+<tr>
+            <td>DeFi</td>
+            <td>-0.5%</td>
+            <td>Neutral</td>
+        </tr>
+<tr>
+            <td>Meme</td>
+            <td>-0.6%</td>
+            <td>Weakening</td>
+        </tr>
+<tr>
+            <td>AI</td>
+            <td>-0.0%</td>
+            <td>Neutral</td>
+        </tr></tbody>
+    </table>
+    </section>
+
+    <section class="section">
+    <h2>Historical Outcome Explorer</h2>
+    <table class="compact-table">
+      <thead>
+        <tr><th>Outcome</th><th>Read</th></tr>
+      </thead>
+      <tbody><tr><td>When Regime Resembled</td><td>2019 Bear Recovery (73.5% similarity)</td></tr>
+<tr><td>Matched Regime</td><td>Early Risk-On</td></tr>
+<tr><td>BTC Forward 30D Median</td><td>+12.0%</td></tr>
+<tr><td>BTC Forward 30D Max</td><td>+38.0%</td></tr>
+<tr><td>BTC Forward 30D Min</td><td>-6.0%</td></tr>
+<tr><td>Read</td><td>Post-capitulation recovery with improving on-chain structure before broad liquidity confirmation.</td></tr></tbody>
+    </table>
+    </section>
+
+    <details class="section section-wide">
+      <summary>Layer Details</summary>
+      <div class="details-body">
+        <h2>Layer 1: Macro Liquidity</h2>
+        <table>
+          <thead><tr><th>Source</th><th>Indicator</th><th>Value</th><th>Score</th><th>Signal</th><th>Rule</th></tr></thead>
+          <tbody><tr>
+            <td>yfinance</td>
+            <td>US10Y</td>
+            <td>+1.09%</td>
+            <td class="score score-0">NEUT</td>
+            <td>Neutral</td>
+            <td class="rule-cell"><code>20D change; lower yields support liquidity</code></td>
+        </tr>
+<tr>
+            <td>yfinance</td>
+            <td>DXY</td>
+            <td>-0.82%</td>
+            <td class="score score-0">NEUT</td>
+            <td>Neutral</td>
+            <td class="rule-cell"><code>20D change; weaker USD is crypto-liquidity friendly</code></td>
+        </tr>
+<tr>
+            <td>FRED</td>
+            <td>Fed Rate</td>
+            <td>3.64% (+0.00)</td>
+            <td class="score score-0">NEUT</td>
+            <td>Neutral</td>
+            <td class="rule-cell"><code>latest minus 3 observations</code></td>
+        </tr>
+<tr>
+            <td>FRED</td>
+            <td>M2</td>
+            <td>+1.49%</td>
+            <td class="score score-1">BULL</td>
+            <td>Money supply expanding</td>
+            <td class="rule-cell"><code>3-observation growth</code></td>
+        </tr>
+<tr>
+            <td>yfinance</td>
+            <td>VIX</td>
+            <td>17.2</td>
+            <td class="score score-1">BULL</td>
+            <td>Volatility calm</td>
+            <td class="rule-cell"><code>VIX &lt; 18 bullish, &gt; 25 bearish</code></td>
+        </tr>
+<tr>
+            <td>yfinance</td>
+            <td>NASDAQ Correlation</td>
+            <td>0.29</td>
+            <td class="score score-0">NEUT</td>
+            <td>Neutral</td>
+            <td class="rule-cell"><code>30D BTC/NASDAQ return correlation plus NASDAQ trend</code></td>
+        </tr>
+<tr>
+            <td>DeFiLlama</td>
+            <td>Stablecoin Supply Growth</td>
+            <td>+1.52%</td>
+            <td class="score score-1">BULL</td>
+            <td>Stablecoin liquidity expanding</td>
+            <td class="rule-cell"><code>30D supply growth from DeFiLlama</code></td>
+        </tr></tbody>
+        </table>
+        <h2>Layer 2: Capital Flow</h2>
+        <table>
+          <thead><tr><th>Source</th><th>Indicator</th><th>Value</th><th>Score</th><th>Signal</th><th>Rule</th></tr></thead>
+          <tbody><tr>
+            <td>yfinance</td>
+            <td>BTC ETF Flow Proxy</td>
+            <td>$+3,443,562,201</td>
+            <td class="score score-1">BULL</td>
+            <td>ETF bid supportive</td>
+            <td class="rule-cell"><code>5D signed dollar-volume proxy from spot BTC ETF tickers</code></td>
+        </tr>
+<tr>
+            <td>CoinGecko</td>
+            <td>BTC Dominance</td>
+            <td>58.3%</td>
+            <td class="score score--1">BEAR</td>
+            <td>BTC dominance defensive</td>
+            <td class="rule-cell"><code>BTC dominance &lt;50 bullish for broad risk, &gt;58 defensive</code></td>
+        </tr>
+<tr>
+            <td>Dune</td>
+            <td>Exchange Reserve Proxy</td>
+            <td>+290</td>
+            <td class="score score-0">NEUT</td>
+            <td>Neutral</td>
+            <td class="rule-cell"><code>Uses 7D exchange net flow as reserve-pressure proxy</code></td>
+        </tr>
+<tr>
+            <td>DeFiLlama</td>
+            <td>Stablecoin Rotation</td>
+            <td>+1.52%</td>
+            <td class="score score-1">BULL</td>
+            <td>Dry powder expanding</td>
+            <td class="rule-cell"><code>30D stablecoin supply growth as rotation proxy</code></td>
+        </tr>
+<tr>
+            <td>CoinGecko</td>
+            <td>Sector Rotation</td>
+            <td>-0.35% avg (RWA -0.3%, DeFi -0.5%, Meme -0.6%, AI -0.0%)</td>
+            <td class="score score-0">NEUT</td>
+            <td>Neutral</td>
+            <td class="rule-cell"><code>Average 24H category market-cap change across AI/RWA/DeFi/Meme</code></td>
+        </tr></tbody>
+        </table>
+        <h2>Narrative Strength</h2>
+        <table>
+          <thead><tr><th>Source</th><th>Indicator</th><th>Value</th><th>Score</th><th>Signal</th><th>Rule</th></tr></thead>
+          <tbody><tr>
+            <td>CoinGecko</td>
+            <td>Sector Rotation</td>
+            <td>-0.35% avg (RWA -0.3%, DeFi -0.5%, Meme -0.6%, AI -0.0%)</td>
+            <td class="score score-0">NEUT</td>
+            <td>Neutral</td>
+            <td class="rule-cell"><code>Average 24H category market-cap change across AI/RWA/DeFi/Meme</code></td>
+        </tr></tbody>
+        </table>
+        <h2>Layer 3: On-Chain Indicator Read</h2>
+        <table>
+          <thead><tr><th>Source</th><th>Indicator</th><th>Value</th><th>Score</th><th>Signal</th><th>Rule</th></tr></thead>
+          <tbody><tr>
+            <td>dune</td>
+            <td>SOPR (7D MA)</td>
+            <td>0.999</td>
+            <td class="score score-0">NEUT</td>
+            <td>Neutral realized P/L regime</td>
+            <td class="rule-cell"><code>0.98 &lt;= sopr_ma &lt; 1.00 or sopr momentum mixed</code></td>
+        </tr>
+<tr>
+            <td>dune</td>
+            <td>RHODL Ratio (7D MA)</td>
+            <td>943</td>
+            <td class="score score-0">NEUT</td>
+            <td>Mid-cycle holder balance</td>
+            <td class="rule-cell"><code>800 &lt;= rhodl_ma &lt;= 1,800 or momentum not rising</code></td>
+        </tr>
+<tr>
+            <td>dune</td>
+            <td>Exchange Flow (7D Sum)</td>
+            <td>+290</td>
+            <td class="score score-0">NEUT</td>
+            <td>Balanced exchange pressure</td>
+            <td class="rule-cell"><code>-8,000 &lt;= 7D net flow &lt;= +8,000</code></td>
+        </tr>
+<tr>
+            <td>dune</td>
+            <td>LTH/STH Rotation</td>
+            <td>-0.07%</td>
+            <td class="score score-0">NEUT</td>
+            <td>Holder rotation is neutral</td>
+            <td class="rule-cell"><code>-0.6% &lt;= lth_ma - sth_ma &lt;= +0.6%</code></td>
+        </tr>
+<tr>
+            <td>dune</td>
+            <td>Miner Behaviour (Puell 7D)</td>
+            <td>0.930</td>
+            <td class="score score-0">NEUT</td>
+            <td>Normal miner revenue regime</td>
+            <td class="rule-cell"><code>0.6 &lt;= puell_ma &lt;= 1.35</code></td>
+        </tr>
+<tr>
+            <td>yfinance</td>
+            <td>yfinance BTC Momentum</td>
+            <td>+2.57%</td>
+            <td class="score score-0">NEUT</td>
+            <td>Price momentum is neutral</td>
+            <td class="rule-cell"><code>-4% &lt;= 7D return &lt;= +4%</code></td>
+        </tr>
+<tr>
+            <td>cardanoscan</td>
+            <td>Cardanoscan Block Freshness</td>
+            <td>0.4m</td>
+            <td class="score score-1">BULL</td>
+            <td>Latest block is fresh</td>
+            <td class="rule-cell"><code>block age &lt;= 10 minutes</code></td>
+        </tr></tbody>
+        </table>
+      </div>
+    </details>
+
+    <details class="section section-wide">
+      <summary>Rules, Confidence, And Methodology</summary>
+      <div class="details-body">
+        <h2>Confidence Scoring</h2>
+        <table class="compact-table">
+          <thead><tr><th>Component</th><th>Read</th></tr></thead>
+          <tbody><tr><td>Confidence</td><td>High (86.2%)</td></tr>
+<tr><td>Indicator Alignment</td><td>83.3%</td></tr>
+<tr><td>Historical Similarity</td><td>73.5%</td></tr>
+<tr><td>Volatility Regime</td><td>Calm volatility</td></tr>
+<tr><td>Data Coverage</td><td>100.0%</td></tr></tbody>
+        </table>
+        <h2>Contextual Regime Logic</h2>
+        <table>
+          <thead><tr><th>Rule</th><th>Triggered</th><th>Result</th><th>Explanation</th></tr></thead>
+          <tbody><tr>
+            <td>Alt Risk-On Probability</td>
+            <td>No</td>
+            <td>Not triggered</td>
+            <td>Macro liquidity is positive, capital flow is positive, and BTC dominance is falling/broadening.</td>
+        </tr>
+<tr>
+            <td>BTC-Led Risk-On</td>
+            <td>Yes</td>
+            <td>BTC-Led Risk-On</td>
+            <td>ETF/capital flow is supportive while BTC dominance is not yet broadening into alt risk.</td>
+        </tr>
+<tr>
+            <td>On-Chain Leads Macro</td>
+            <td>No</td>
+            <td>Not triggered</td>
+            <td>On-chain has improved before macro liquidity has fully confirmed.</td>
+        </tr>
+<tr>
+            <td>Liquidity Trap</td>
+            <td>No</td>
+            <td>Not triggered</td>
+            <td>Macro backdrop is supportive but capital-flow confirmation is missing.</td>
+        </tr>
+<tr>
+            <td>Risk-Off Confirmation</td>
+            <td>No</td>
+            <td>Not triggered</td>
+            <td>Macro, capital flow, and on-chain structure are all negative.</td>
+        </tr>
+<tr>
+            <td>Narrative Weakness Drag</td>
+            <td>No</td>
+            <td>Not triggered</td>
+            <td>Sector/narrative rotation is weak and capital flow is not offsetting it.</td>
+        </tr></tbody>
+        </table>
+        <h2>Methodology</h2>
+        <table class="compact-table">
+          <thead><tr><th>Area</th><th>Method</th></tr></thead>
+          <tbody><tr><td>Layer scoring</td><td>Each live indicator votes -1, 0, or +1. Layer score is normalized by available max score so missing sources reduce coverage but do not fabricate a signal.</td></tr>
+<tr><td>Historical similarity</td><td>The current macro, capital-flow, on-chain, and narrative layer vector is compared with historical regime templates using Euclidean distance.</td></tr>
+<tr><td>Regime probabilities</td><td>Transition probabilities are heuristic scenario scores derived from layer ratios, BTC dominance behavior, narrative strength, and on-chain confirmation.</td></tr>
+<tr><td>Confidence scoring</td><td>Confidence blends indicator alignment, historical similarity, volatility regime, and data coverage. Higher agreement and fuller data raise confidence.</td></tr>
+<tr><td>Proxy assumptions</td><td>Public-data proxies are used when institutional-grade datasets are unavailable, including Dune-derived SOPR/RHODL, ETF signed dollar volume, and exchange reserve pressure.</td></tr></tbody>
+        </table>
+      </div>
+    </details>
+
+    <details class="section section-wide">
+      <summary>Historical Database And Backtest</summary>
+      <div class="details-body">
+        <h2>Historical Regime Database</h2>
+        <table>
+          <thead><tr><th>Period</th><th>Regime</th><th>Similarity</th><th>Notes</th></tr></thead>
+          <tbody><tr>
+            <td>2019 Bear Recovery</td>
+            <td>Early Risk-On</td>
+            <td>73.5%</td>
+            <td>Post-capitulation recovery with improving on-chain structure before broad liquidity confirmation.</td>
+        </tr>
+<tr>
+            <td>2020 QE / Liquidity Expansion</td>
+            <td>Risk-On</td>
+            <td>73.4%</td>
+            <td>Macro liquidity impulse dominated; risk assets benefited from easing financial conditions.</td>
+        </tr>
+<tr>
+            <td>2024 ETF Regime</td>
+            <td>BTC-Led Risk-On</td>
+            <td>66.6%</td>
+            <td>ETF-led demand and BTC dominance mattered more than broad alt rotation.</td>
+        </tr>
+<tr>
+            <td>2021 Alt Season</td>
+            <td>Alt Risk-On</td>
+            <td>47.5%</td>
+            <td>Broad capital rotation and strong narratives outperformed BTC-led exposure.</td>
+        </tr>
+<tr>
+            <td>2022 Liquidity Collapse</td>
+            <td>Risk-Off</td>
+            <td>9.5%</td>
+            <td>Tightening liquidity, negative capital flow, weak narratives, and deteriorating on-chain structure.</td>
+        </tr></tbody>
+        </table>
+        <h2>Backtest</h2>
+        <div class="kpis">
+          <div class="kpi">Rows<b>25</b></div>
+          <div class="kpi">Period<b>2026-04-14 to 2026-05-08</b></div>
+          <div class="kpi">Transitions<b>7</b></div>
+          <div class="kpi">Avg Score<b>1.48</b></div>
+        </div>
+        <h2>State Distribution</h2>
+        <table>
+          <thead><tr><th>Market State</th><th>Count</th></tr></thead>
+          <tbody><tr><td>MILD BULLISH</td><td>20</td></tr>
+<tr><td>BULLISH TREND</td><td>4</td></tr>
+<tr><td>NEUTRAL / SIDEWAYS</td><td>1</td></tr></tbody>
+        </table>
+        <h2>Forward Returns By State</h2>
+        <table>
+          <thead><tr><th>Market State</th><th>Samples</th><th>Mean 7D Return</th><th>Median 7D Return</th></tr></thead>
+          <tbody><tr><td>BULLISH TREND</td><td>4</td><td>+0.95%</td><td>+0.21%</td></tr>
+<tr><td>MILD BULLISH</td><td>14</td><td>+2.84%</td><td>+2.53%</td></tr></tbody>
+        </table>
+        <h2>Recent Classifications</h2>
+        <table>
+          <thead><tr><th>Date</th><th>Score</th><th>Market State</th><th>Conviction</th></tr></thead>
+          <tbody><tr>
+            <td>2026-04-25</td>
+            <td>+1</td>
+            <td>MILD BULLISH</td>
+            <td>LOW</td>
+        </tr>
+<tr>
+            <td>2026-04-26</td>
+            <td>+2</td>
+            <td>MILD BULLISH</td>
+            <td>LOW</td>
+        </tr>
+<tr>
+            <td>2026-04-27</td>
+            <td>+1</td>
+            <td>MILD BULLISH</td>
+            <td>LOW</td>
+        </tr>
+<tr>
+            <td>2026-04-28</td>
+            <td>+1</td>
+            <td>MILD BULLISH</td>
+            <td>LOW</td>
+        </tr>
+<tr>
+            <td>2026-04-29</td>
+            <td>+1</td>
+            <td>MILD BULLISH</td>
+            <td>LOW</td>
+        </tr>
+<tr>
+            <td>2026-04-30</td>
+            <td>+1</td>
+            <td>MILD BULLISH</td>
+            <td>LOW</td>
+        </tr>
+<tr>
+            <td>2026-05-01</td>
+            <td>+1</td>
+            <td>MILD BULLISH</td>
+            <td>LOW</td>
+        </tr>
+<tr>
+            <td>2026-05-02</td>
+            <td>+1</td>
+            <td>MILD BULLISH</td>
+            <td>LOW</td>
+        </tr>
+<tr>
+            <td>2026-05-03</td>
+            <td>+1</td>
+            <td>MILD BULLISH</td>
+            <td>LOW</td>
+        </tr>
+<tr>
+            <td>2026-05-04</td>
+            <td>+1</td>
+            <td>MILD BULLISH</td>
+            <td>LOW</td>
+        </tr>
+<tr>
+            <td>2026-05-05</td>
+            <td>+2</td>
+            <td>MILD BULLISH</td>
+            <td>LOW</td>
+        </tr>
+<tr>
+            <td>2026-05-06</td>
+            <td>+1</td>
+            <td>MILD BULLISH</td>
+            <td>LOW</td>
+        </tr>
+<tr>
+            <td>2026-05-07</td>
+            <td>+1</td>
+            <td>MILD BULLISH</td>
+            <td>LOW</td>
+        </tr>
+<tr>
+            <td>2026-05-08</td>
+            <td>+0</td>
+            <td>NEUTRAL / SIDEWAYS</td>
+            <td>LOW</td>
+        </tr></tbody>
+        </table>
+      </div>
+    </details>
+
+    <section class="section section-wide">
+    <h2>Indicator Sparklines</h2>
+    <table>
+      <thead>
+        <tr><th>Indicator</th><th>Latest</th><th>30-Point Sparkline</th></tr>
+      </thead>
+      <tbody><tr><td>SOPR</td><td>0.999</td><td><svg class="spark" viewBox="0 0 130 34"><polyline points="4.0,30.0 9.1,27.6 14.2,25.6 19.2,19.1 24.3,17.9 29.4,17.9 34.5,15.2 39.6,15.5 44.7,10.9 49.8,9.7 54.8,17.3 59.9,18.3 65.0,18.4 70.1,21.1 75.2,19.9 80.2,23.2 85.3,14.8 90.4,9.2 95.5,6.6 100.6,5.5 105.7,4.6 110.8,4.0 115.8,5.8 120.9,13.4 126.0,29.4" /></svg></td></tr>
+<tr><td>RHODL</td><td>943</td><td><svg class="spark" viewBox="0 0 130 34"><polyline points="4.0,5.0 9.1,6.3 14.2,6.6 19.2,8.7 24.3,11.2 29.4,15.2 34.5,17.3 39.6,20.8 44.7,22.4 49.8,25.2 54.8,25.6 59.9,24.5 65.0,23.0 70.1,23.1 75.2,19.4 80.2,12.2 85.3,4.0 90.4,5.0 95.5,7.6 100.6,10.1 105.7,11.1 110.8,14.4 115.8,22.3 120.9,30.0 126.0,29.9" /></svg></td></tr>
+<tr><td>Exchange Flow</td><td>+290</td><td><svg class="spark" viewBox="0 0 130 34"><polyline points="4.0,7.5 9.1,5.5 14.2,7.7 19.2,6.5 24.3,13.2 29.4,13.8 34.5,16.2 39.6,6.8 44.7,11.9 49.8,30.0 54.8,25.7 59.9,25.6 65.0,25.6 70.1,24.7 75.2,24.0 80.2,23.9 85.3,5.0 90.4,4.0 95.5,4.3 100.6,4.4 105.7,4.3 110.8,4.3 115.8,4.3 120.9,4.3 126.0,4.2" /></svg></td></tr>
+<tr><td>LTH/STH</td><td>-0.07%</td><td><svg class="spark" viewBox="0 0 130 34"><polyline points="4.0,4.0 9.1,11.7 14.2,12.0 19.2,14.2 24.3,15.3 29.4,15.8 34.5,7.3 39.6,12.5 44.7,5.6 49.8,20.3 54.8,8.5 59.9,17.6 65.0,15.8 70.1,21.1 75.2,30.0 80.2,18.6 85.3,9.5 90.4,21.4 95.5,13.4 100.6,14.0 105.7,8.7 110.8,15.9 115.8,25.2 120.9,17.9 126.0,16.8" /></svg></td></tr>
+<tr><td>Puell</td><td>0.930</td><td><svg class="spark" viewBox="0 0 130 34"><polyline points="4.0,13.1 9.1,19.0 14.2,16.9 19.2,12.6 24.3,4.8 29.4,4.0 34.5,8.7 39.6,16.2 44.7,14.6 49.8,22.7 54.8,20.7 59.9,24.1 65.0,26.5 70.1,24.4 75.2,23.4 80.2,24.4 85.3,19.4 90.4,17.0 95.5,18.0 100.6,17.2 105.7,14.3 110.8,11.4 115.8,7.7 120.9,7.2 126.0,30.0" /></svg></td></tr></tbody>
+    </table>
+    </section>
+
+    <section class="section disclaimer section-wide">
+    <h2>Disclaimer / Limitations</h2>
+    <ul><li>This system is designed for probabilistic market-state analysis, not deterministic price prediction.</li>
+<li>Several metrics are proxy-based because exact vendor-grade cost-basis, ETF flow, and exchange-reserve datasets are not always public.</li>
+<li>Live status depends on API availability, saved Dune query schema, and rate limits from third-party providers.</li>
+<li>Historical regime matching is a reference framework, not a claim that future returns will repeat past regimes.</li>
+<li>This run is using live Dune rows for the on-chain layer; supplemental sources vote only when their API responses are usable.</li></ul>
+    </section>
+
+    <details class="section section-wide">
+      <summary>Data Quality And Source Status</summary>
+      <div class="details-body">
+        <h2>Data Quality Notes</h2>
+        <ul><li>Dune classifier rows are live.</li>
+<li>SOPR and RHODL are live Dune-derived proxies, not exact Glassnode-style cost-basis metrics.</li>
+<li>Exchange Flow uses live EVM CEX flow converted to BTC-equivalent units when the compact EVM query is saved in Dune.</li>
+<li>LTH/STH uses live Bitcoin spent-age rotation from Dune.</li>
+<li>Solscan is not voting because the API call failed.</li>
+<li>Etherscan gas is not voting unless a usable gas oracle response is available.</li></ul>
+        <h2>Cross-Chain Source Status</h2>
+        <ul><li><b>etherscan_eth_supply</b>: You are using a deprecated V1 endpoint, switch to Etherscan API V2 using https://docs.etherscan.io/v2-migration</li>
+<li><b>etherscan_gas_oracle</b>: You are using a deprecated V1 endpoint, switch to Etherscan API V2 using https://docs.etherscan.io/v2-migration</li>
+<li><b>etherscan_safe_gas_gwei</b>: None</li>
+<li><b>etherscan_propose_gas_gwei</b>: None</li>
+<li><b>cardanoscan_status</b>: fetched latest block context</li>
+<li><b>cardanoscan_latest_block</b>: {&quot;hash&quot;: &quot;58a747f3c2544c643942ca71bb84a0c79bc5a232b5a0a6bc3ada27472df41093&quot;, &quot;previousBlockHash&quot;: &quot;de64058be973ece7f0fbd24273de6b9cce1216b42477ed91b31b0b84c88a7207&quot;, &quot;blockHeight&quot;...</li>
+<li><b>fetch_solscan_context_error</b>: HTTP Error 401: Unauthorized</li>
+<li><b>yfinance_status</b>: used as market context</li>
+<li><b>yfinance_symbol</b>: BTC-USD</li>
+<li><b>yfinance_latest_date</b>: 2026-05-10</li>
+<li><b>yfinance_latest_close</b>: 80719.16</li>
+<li><b>yfinance_latest_return_1d_pct</b>: 0.66</li>
+<li><b>classifier_source_note</b>: Base rule scores come from the Dune classifier schema. Supplemental rules can add votes from yfinance momentum, Etherscan gas pressure, Cardanoscan block freshness, and Solscan bl...</li>
+<li><b>market_regime</b>: Early Risk-On</li>
+<li><b>market_regime_aggregate_score</b>: 0.193</li></ul>
+      </div>
+    </details>
+  </main>
+  <script>
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+    function updateHeatmap() {
+      const timeframe = Number(document.getElementById("heatmapTimeframe")?.value || 60);
+      const signal = document.getElementById("heatmapSignal")?.value || "all";
+      const allCells = Array.from(document.querySelectorAll(".heatmap-cell, .heatmap-date"));
+      const dayValues = allCells.map((node) => Number(node.dataset.day)).filter((value) => !Number.isNaN(value));
+      const maxDay = Math.max(...dayValues, 0);
+      const minVisibleDay = Math.max(0, maxDay - timeframe + 1);
+
+      document.querySelectorAll(".heatmap-date, .heatmap-cell").forEach((node) => {
+        const day = Number(node.dataset.day);
+        node.classList.toggle("is-hidden", day < minVisibleDay);
+      });
+      document.querySelectorAll("[data-row-label], [data-row-cells]").forEach((node) => {
+        const row = node.dataset.rowLabel || node.dataset.rowCells;
+        node.classList.toggle("is-hidden", signal !== "all" && row !== signal);
+      });
+    }
+
+    function bindHeatmap() {
+      document.getElementById("heatmapTimeframe")?.addEventListener("change", updateHeatmap);
+      document.getElementById("heatmapSignal")?.addEventListener("change", updateHeatmap);
+      document.getElementById("resetHeatmap")?.addEventListener("click", () => {
+        document.getElementById("heatmapTimeframe").value = "60";
+        document.getElementById("heatmapSignal").value = "all";
+        updateHeatmap();
+      });
+      document.querySelectorAll(".heatmap-cell").forEach((cell) => {
+        cell.addEventListener("click", () => {
+          document.querySelectorAll(".heatmap-cell.is-selected").forEach((node) => node.classList.remove("is-selected"));
+          cell.classList.add("is-selected");
+          const panel = document.getElementById("heatmapDrilldown");
+          if (panel) {
+            panel.innerHTML = `<span>Drill-down</span><strong>${cell.dataset.date} | ${cell.dataset.label}</strong><p>Signal read: ${cell.dataset.value}</p>`;
+          }
+        });
+      });
+      updateHeatmap();
+    }
+
+    function bindScenarioEngine() {
+      const sliders = {
+        btc: document.getElementById("btcDominanceSlider"),
+        stable: document.getElementById("stableGrowthSlider"),
+        macro: document.getElementById("macroImpulseSlider"),
+        narrative: document.getElementById("narrativeImpulseSlider"),
+      };
+      if (!sliders.btc || !sliders.stable || !sliders.macro || !sliders.narrative) return;
+
+      const update = () => {
+        const btc = Number(sliders.btc.value);
+        const stable = Number(sliders.stable.value);
+        const macro = Number(sliders.macro.value);
+        const narrative = Number(sliders.narrative.value);
+        document.getElementById("btcDominanceValue").textContent = `${btc}%`;
+        document.getElementById("stableGrowthValue").textContent = `${stable}%`;
+        document.getElementById("macroImpulseValue").textContent = macro;
+        document.getElementById("narrativeImpulseValue").textContent = narrative;
+
+        const adjustments = {
+          "Liquidity Expansion": stable * 2.0 + macro * 7,
+          "BTC-Led Risk-On": (btc >= 55 ? 8 : -4) + macro * 3,
+          "Early Rotation": (btc < 54 ? 8 : -3) + stable * 1.2,
+          "Narrative Expansion": (btc < 54 ? 12 : -6) + stable * 1.8 + narrative * 9,
+          "Exhaustion": (btc > 58 ? 7 : 0) - stable * 1.2 - narrative * 7,
+          "Transition": -Math.abs(macro + narrative) * 4,
+          "Compression": -stable * 1.8 - macro * 8 - narrative * 3,
+        };
+
+        let leader = ["Transition", 0];
+        document.querySelectorAll("[data-prob-bar]").forEach((bar) => {
+          const name = bar.dataset.probBar;
+          const base = Number(bar.dataset.base || 0);
+          const value = Math.round(clamp(base + (adjustments[name] || 0), 0, 95));
+          bar.style.width = `${value}%`;
+          const label = document.querySelector(`[data-prob-value="${CSS.escape(name)}"]`);
+          if (label) label.textContent = `${value}%`;
+          if (value > leader[1]) leader = [name, value];
+        });
+
+        const note = document.getElementById("scenarioRead");
+        if (note) {
+          note.textContent = `Scenario read: ${leader[0]} becomes the strongest transition at ${leader[1]}%.`;
+        }
+      };
+
+      Object.values(sliders).forEach((slider) => slider.addEventListener("input", update));
+      update();
+    }
+
+    bindHeatmap();
+    bindScenarioEngine();
+  </script>
+</body>
+</html>

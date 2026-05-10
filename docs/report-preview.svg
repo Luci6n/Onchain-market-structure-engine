@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-label="On-chain market intelligence report preview">
+  <rect width="1280" height="720" fill="#f3f6f9"/>
+  <rect x="64" y="48" width="1152" height="140" fill="#0f172a"/>
+  <text x="96" y="92" fill="#93c5fd" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700" letter-spacing="2">CRYPTO MARKET INTELLIGENCE</text>
+  <text x="96" y="140" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="44" font-weight="800">Market Regime Command Center</text>
+  <text x="96" y="168" fill="#cbd5e1" font-family="Inter, Arial, sans-serif" font-size="18">Macro liquidity, capital flow, on-chain signals, narrative rotation, and regime engine</text>
+  <text x="1000" y="118" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800" text-anchor="end">TRANSITION</text>
+  <rect x="836" y="134" width="164" height="34" fill="#1e293b" stroke="#334155"/>
+  <text x="918" y="157" fill="#e2e8f0" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="700" text-anchor="middle">Score +1 / +7</text>
+  <g fill="#ffffff" stroke="#d9e2ec">
+    <rect x="64" y="220" width="548" height="170"/>
+    <rect x="668" y="220" width="548" height="170"/>
+    <rect x="64" y="424" width="1152" height="208"/>
+  </g>
+  <text x="94" y="260" fill="#64748b" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="800" letter-spacing="1">MARKET REGIME ENGINE</text>
+  <text x="94" y="310" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="800">Macro Liquidity</text>
+  <text x="560" y="310" fill="#047857" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="end">Positive</text>
+  <line x1="94" y1="330" x2="582" y2="330" stroke="#d9e2ec"/>
+  <text x="94" y="362" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="800">Capital Flow</text>
+  <text x="560" y="362" fill="#475569" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="end">Neutral</text>
+  <text x="698" y="260" fill="#64748b" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="800" letter-spacing="1">CONFIDENCE SCORING</text>
+  <text x="698" y="310" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="800">Confidence</text>
+  <text x="1166" y="310" fill="#2563eb" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="end">Medium 61%</text>
+  <line x1="698" y1="330" x2="1186" y2="330" stroke="#d9e2ec"/>
+  <text x="698" y="362" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="800">Historical Match</text>
+  <text x="1166" y="362" fill="#475569" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="800" text-anchor="end">2019 Recovery</text>
+  <text x="94" y="464" fill="#64748b" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="800" letter-spacing="1">LAYERED INDICATOR READ</text>
+  <rect x="94" y="494" width="1092" height="42" fill="#f8fafc" stroke="#d9e2ec"/>
+  <text x="120" y="522" fill="#64748b" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="800">Source</text>
+  <text x="300" y="522" fill="#64748b" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="800">Indicator</text>
+  <text x="650" y="522" fill="#64748b" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="800">Signal</text>
+  <text x="1010" y="522" fill="#64748b" font-family="Inter, Arial, sans-serif" font-size="15" font-weight="800">Rule</text>
+  <text x="120" y="574" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="18">dune</text>
+  <text x="300" y="574" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="18">SOPR / RHODL / Exchange Flow</text>
+  <text x="650" y="574" fill="#047857" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800">BULL / NEUT</text>
+  <text x="1010" y="574" fill="#475569" font-family="Inter, Arial, sans-serif" font-size="18">rule-based</text>
+  <line x1="94" y1="598" x2="1186" y2="598" stroke="#d9e2ec"/>
+  <text x="120" y="626" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="18">CoinGecko</text>
+  <text x="300" y="626" fill="#111827" font-family="Inter, Arial, sans-serif" font-size="18">Narrative Rotation Heatmap</text>
+  <text x="650" y="626" fill="#b91c1c" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800">WEAKENING</text>
+  <text x="1010" y="626" fill="#475569" font-family="Inter, Arial, sans-serif" font-size="18">sector rotation</text>
+</svg>

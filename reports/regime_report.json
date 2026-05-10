@@ -1,0 +1,446 @@
+{
+  "market_regime": "Early Risk-On",
+  "market_ontology": "Liquidity Expansion",
+  "aggregate_score": 0.193,
+  "contextual_rules": [
+    {
+      "rule": "Alt Risk-On Probability",
+      "triggered": false,
+      "result": "Not triggered",
+      "explanation": "Macro liquidity is positive, capital flow is positive, and BTC dominance is falling/broadening."
+    },
+    {
+      "rule": "BTC-Led Risk-On",
+      "triggered": true,
+      "result": "BTC-Led Risk-On",
+      "explanation": "ETF/capital flow is supportive while BTC dominance is not yet broadening into alt risk."
+    },
+    {
+      "rule": "On-Chain Leads Macro",
+      "triggered": false,
+      "result": "Not triggered",
+      "explanation": "On-chain has improved before macro liquidity has fully confirmed."
+    },
+    {
+      "rule": "Liquidity Trap",
+      "triggered": false,
+      "result": "Not triggered",
+      "explanation": "Macro backdrop is supportive but capital-flow confirmation is missing."
+    },
+    {
+      "rule": "Risk-Off Confirmation",
+      "triggered": false,
+      "result": "Not triggered",
+      "explanation": "Macro, capital flow, and on-chain structure are all negative."
+    },
+    {
+      "rule": "Narrative Weakness Drag",
+      "triggered": false,
+      "result": "Not triggered",
+      "explanation": "Sector/narrative rotation is weak and capital flow is not offsetting it."
+    }
+  ],
+  "historical_match": {
+    "current_vector": {
+      "macro": 0.42857142857142855,
+      "capital": 0.2,
+      "onchain": 0.14285714285714285,
+      "narrative": 0.0
+    },
+    "best_match": {
+      "period": "2019 Bear Recovery",
+      "regime": "Early Risk-On",
+      "similarity": 0.735,
+      "notes": "Post-capitulation recovery with improving on-chain structure before broad liquidity confirmation.",
+      "scores": {
+        "macro": 0.1,
+        "capital": -0.1,
+        "onchain": 0.35,
+        "narrative": -0.2
+      },
+      "btc_forward_30d_median": 12.0,
+      "btc_forward_30d_max": 38.0,
+      "btc_forward_30d_min": -6.0
+    },
+    "matches": [
+      {
+        "period": "2019 Bear Recovery",
+        "regime": "Early Risk-On",
+        "similarity": 0.735,
+        "notes": "Post-capitulation recovery with improving on-chain structure before broad liquidity confirmation.",
+        "scores": {
+          "macro": 0.1,
+          "capital": -0.1,
+          "onchain": 0.35,
+          "narrative": -0.2
+        },
+        "btc_forward_30d_median": 12.0,
+        "btc_forward_30d_max": 38.0,
+        "btc_forward_30d_min": -6.0
+      },
+      {
+        "period": "2020 QE / Liquidity Expansion",
+        "regime": "Risk-On",
+        "similarity": 0.734,
+        "notes": "Macro liquidity impulse dominated; risk assets benefited from easing financial conditions.",
+        "scores": {
+          "macro": 0.8,
+          "capital": 0.45,
+          "onchain": 0.35,
+          "narrative": 0.2
+        },
+        "btc_forward_30d_median": 18.0,
+        "btc_forward_30d_max": 45.0,
+        "btc_forward_30d_min": -8.0
+      },
+      {
+        "period": "2024 ETF Regime",
+        "regime": "BTC-Led Risk-On",
+        "similarity": 0.666,
+        "notes": "ETF-led demand and BTC dominance mattered more than broad alt rotation.",
+        "scores": {
+          "macro": 0.1,
+          "capital": 0.7,
+          "onchain": 0.3,
+          "narrative": 0.25
+        },
+        "btc_forward_30d_median": 9.0,
+        "btc_forward_30d_max": 28.0,
+        "btc_forward_30d_min": -10.0
+      },
+      {
+        "period": "2021 Alt Season",
+        "regime": "Alt Risk-On",
+        "similarity": 0.475,
+        "notes": "Broad capital rotation and strong narratives outperformed BTC-led exposure.",
+        "scores": {
+          "macro": 0.45,
+          "capital": 0.7,
+          "onchain": 0.5,
+          "narrative": 0.85
+        },
+        "btc_forward_30d_median": 10.0,
+        "btc_forward_30d_max": 32.0,
+        "btc_forward_30d_min": -18.0
+      },
+      {
+        "period": "2022 Liquidity Collapse",
+        "regime": "Risk-Off",
+        "similarity": 0.095,
+        "notes": "Tightening liquidity, negative capital flow, weak narratives, and deteriorating on-chain structure.",
+        "scores": {
+          "macro": -0.8,
+          "capital": -0.65,
+          "onchain": -0.55,
+          "narrative": -0.75
+        },
+        "btc_forward_30d_median": -14.0,
+        "btc_forward_30d_max": 8.0,
+        "btc_forward_30d_min": -35.0
+      }
+    ]
+  },
+  "confidence": {
+    "label": "High",
+    "score_pct": 86.2,
+    "components": {
+      "indicator_alignment_pct": 83.3,
+      "historical_similarity_pct": 73.5,
+      "volatility_regime": "Calm volatility",
+      "volatility_score_pct": 100.0,
+      "data_coverage_pct": 100.0
+    }
+  },
+  "transition_probabilities": {
+    "Liquidity Expansion": 52,
+    "BTC-Led Risk-On": 50,
+    "Early Rotation": 36,
+    "Narrative Expansion": 42,
+    "Exhaustion": 28,
+    "Transition": 46,
+    "Compression": 12
+  },
+  "historical_outcome": {
+    "period": "2019 Bear Recovery",
+    "regime": "Early Risk-On",
+    "similarity_pct": 73.5,
+    "btc_forward_30d_median": 12.0,
+    "btc_forward_30d_max": 38.0,
+    "btc_forward_30d_min": -6.0,
+    "notes": "Post-capitulation recovery with improving on-chain structure before broad liquidity confirmation."
+  },
+  "narrative_heatmap": [
+    {
+      "narrative": "RWA",
+      "change_pct": -0.32,
+      "strength": "Neutral"
+    },
+    {
+      "narrative": "DeFi",
+      "change_pct": -0.46,
+      "strength": "Neutral"
+    },
+    {
+      "narrative": "Meme",
+      "change_pct": -0.57,
+      "strength": "Weakening"
+    },
+    {
+      "narrative": "AI",
+      "change_pct": -0.04,
+      "strength": "Neutral"
+    }
+  ],
+  "layers": {
+    "macro": {
+      "layer": "Macro Liquidity",
+      "score": 3,
+      "max_score": 7,
+      "ratio": 0.42857142857142855,
+      "status": "Positive",
+      "signals": [
+        {
+          "indicator": "US10Y",
+          "value": "+1.09%",
+          "score": 0,
+          "signal": "Neutral",
+          "detail": "20D change; lower yields support liquidity",
+          "source": "yfinance"
+        },
+        {
+          "indicator": "DXY",
+          "value": "-0.82%",
+          "score": 0,
+          "signal": "Neutral",
+          "detail": "20D change; weaker USD is crypto-liquidity friendly",
+          "source": "yfinance"
+        },
+        {
+          "indicator": "Fed Rate",
+          "value": "3.64% (+0.00)",
+          "score": 0,
+          "signal": "Neutral",
+          "detail": "latest minus 3 observations",
+          "source": "FRED"
+        },
+        {
+          "indicator": "M2",
+          "value": "+1.49%",
+          "score": 1,
+          "signal": "Money supply expanding",
+          "detail": "3-observation growth",
+          "source": "FRED"
+        },
+        {
+          "indicator": "VIX",
+          "value": "17.2",
+          "score": 1,
+          "signal": "Volatility calm",
+          "detail": "VIX < 18 bullish, > 25 bearish",
+          "source": "yfinance"
+        },
+        {
+          "indicator": "NASDAQ Correlation",
+          "value": "0.29",
+          "score": 0,
+          "signal": "Neutral",
+          "detail": "30D BTC/NASDAQ return correlation plus NASDAQ trend",
+          "source": "yfinance"
+        },
+        {
+          "indicator": "Stablecoin Supply Growth",
+          "value": "+1.52%",
+          "score": 1,
+          "signal": "Stablecoin liquidity expanding",
+          "detail": "30D supply growth from DeFiLlama",
+          "source": "DeFiLlama"
+        }
+      ],
+      "metadata": {}
+    },
+    "capital": {
+      "layer": "Capital Flow",
+      "score": 1,
+      "max_score": 5,
+      "ratio": 0.2,
+      "status": "Positive",
+      "signals": [
+        {
+          "indicator": "BTC ETF Flow Proxy",
+          "value": "$+3,443,562,201",
+          "score": 1,
+          "signal": "ETF bid supportive",
+          "detail": "5D signed dollar-volume proxy from spot BTC ETF tickers",
+          "source": "yfinance"
+        },
+        {
+          "indicator": "BTC Dominance",
+          "value": "58.3%",
+          "score": -1,
+          "signal": "BTC dominance defensive",
+          "detail": "BTC dominance <50 bullish for broad risk, >58 defensive",
+          "source": "CoinGecko"
+        },
+        {
+          "indicator": "Exchange Reserve Proxy",
+          "value": "+290",
+          "score": 0,
+          "signal": "Neutral",
+          "detail": "Uses 7D exchange net flow as reserve-pressure proxy",
+          "source": "Dune"
+        },
+        {
+          "indicator": "Stablecoin Rotation",
+          "value": "+1.52%",
+          "score": 1,
+          "signal": "Dry powder expanding",
+          "detail": "30D stablecoin supply growth as rotation proxy",
+          "source": "DeFiLlama"
+        },
+        {
+          "indicator": "Sector Rotation",
+          "value": "-0.35% avg (RWA -0.3%, DeFi -0.5%, Meme -0.6%, AI -0.0%)",
+          "score": 0,
+          "signal": "Neutral",
+          "detail": "Average 24H category market-cap change across AI/RWA/DeFi/Meme",
+          "source": "CoinGecko"
+        }
+      ],
+      "metadata": {
+        "sector_rotation": {
+          "display": "-0.35% avg (RWA -0.3%, DeFi -0.5%, Meme -0.6%, AI -0.0%)",
+          "average_change_pct": -0.34704071858444646,
+          "leaders": [
+            "RWA -0.3%",
+            "DeFi -0.5%",
+            "Meme -0.6%",
+            "AI -0.0%"
+          ],
+          "narratives": [
+            {
+              "narrative": "RWA",
+              "change_pct": -0.32,
+              "strength": "Neutral"
+            },
+            {
+              "narrative": "DeFi",
+              "change_pct": -0.46,
+              "strength": "Neutral"
+            },
+            {
+              "narrative": "Meme",
+              "change_pct": -0.57,
+              "strength": "Weakening"
+            },
+            {
+              "narrative": "AI",
+              "change_pct": -0.04,
+              "strength": "Neutral"
+            }
+          ]
+        }
+      }
+    },
+    "onchain": {
+      "layer": "On-chain",
+      "score": 1,
+      "max_score": 7,
+      "ratio": 0.14285714285714285,
+      "status": "Neutral",
+      "signals": [
+        {
+          "indicator": "SOPR (7D MA)",
+          "value": "0.999",
+          "score": 0,
+          "signal": "Neutral realized P/L regime",
+          "detail": "0.98 <= sopr_ma < 1.00 or sopr momentum mixed",
+          "source": "dune"
+        },
+        {
+          "indicator": "RHODL Ratio (7D MA)",
+          "value": "943",
+          "score": 0,
+          "signal": "Mid-cycle holder balance",
+          "detail": "800 <= rhodl_ma <= 1,800 or momentum not rising",
+          "source": "dune"
+        },
+        {
+          "indicator": "Exchange Flow (7D Sum)",
+          "value": "+290",
+          "score": 0,
+          "signal": "Balanced exchange pressure",
+          "detail": "-8,000 <= 7D net flow <= +8,000",
+          "source": "dune"
+        },
+        {
+          "indicator": "LTH/STH Rotation",
+          "value": "-0.07%",
+          "score": 0,
+          "signal": "Holder rotation is neutral",
+          "detail": "-0.6% <= lth_ma - sth_ma <= +0.6%",
+          "source": "dune"
+        },
+        {
+          "indicator": "Miner Behaviour (Puell 7D)",
+          "value": "0.930",
+          "score": 0,
+          "signal": "Normal miner revenue regime",
+          "detail": "0.6 <= puell_ma <= 1.35",
+          "source": "dune"
+        }
+      ],
+      "metadata": {}
+    },
+    "narrative": {
+      "layer": "Narrative Strength",
+      "score": 0,
+      "max_score": 1,
+      "ratio": 0.0,
+      "status": "Neutral",
+      "signals": [
+        {
+          "indicator": "Sector Rotation",
+          "value": "-0.35% avg (RWA -0.3%, DeFi -0.5%, Meme -0.6%, AI -0.0%)",
+          "score": 0,
+          "signal": "Neutral",
+          "detail": "Average 24H category market-cap change across AI/RWA/DeFi/Meme",
+          "source": "CoinGecko"
+        }
+      ],
+      "metadata": {
+        "sector_rotation": {
+          "display": "-0.35% avg (RWA -0.3%, DeFi -0.5%, Meme -0.6%, AI -0.0%)",
+          "average_change_pct": -0.34704071858444646,
+          "leaders": [
+            "RWA -0.3%",
+            "DeFi -0.5%",
+            "Meme -0.6%",
+            "AI -0.0%"
+          ],
+          "narratives": [
+            {
+              "narrative": "RWA",
+              "change_pct": -0.32,
+              "strength": "Neutral"
+            },
+            {
+              "narrative": "DeFi",
+              "change_pct": -0.46,
+              "strength": "Neutral"
+            },
+            {
+              "narrative": "Meme",
+              "change_pct": -0.57,
+              "strength": "Weakening"
+            },
+            {
+              "narrative": "AI",
+              "change_pct": -0.04,
+              "strength": "Neutral"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

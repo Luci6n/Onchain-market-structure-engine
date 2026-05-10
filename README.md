@@ -1,5 +1,9 @@
 # On-Chain Market Intelligence Pipeline
 
+![On-chain market report preview](docs/report-preview.svg)
+
+An institutional-style crypto research pipeline that combines macro liquidity, capital flow, on-chain behavior, narrative rotation, and a rule-based regime engine into one terminal report, HTML dashboard, and machine-readable JSON output.
+
 This project follows the analysis flow:
 
 ```text
@@ -41,6 +45,7 @@ Generated artifacts:
 - `reports/onchain_report.html`
 - `reports/source_context.json`
 - `reports/backtest_report.json`
+- `reports/regime_report.json`
 
 Print the Dune SQL schema template:
 
@@ -120,6 +125,62 @@ The Dune queries intentionally avoid the very expensive full UTXO cost-basis joi
 
 ## Source Roles
 
+The report is organized into four layers:
+
+- **Layer 1: Macro Liquidity** tracks US10Y, DXY, Fed Funds, M2, VIX, BTC/NASDAQ correlation, and stablecoin supply growth.
+- **Layer 2: Capital Flow** tracks BTC ETF flow proxy, BTC dominance, exchange reserve pressure proxy, stablecoin rotation, and sector rotation.
+- **Layer 3: On-chain** keeps the existing Dune-driven SOPR/RHODL/Exchange Flow/LTH-STH/Miner Behaviour model.
+- **Layer 4: Market Regime Engine** combines Macro, Capital Flow, On-chain, and Narrative Strength into one regime read.
+
+The front page uses a custom market ontology instead of generic labels:
+
+```text
+Liquidity Expansion
+BTC-Led Risk-On
+Early Rotation
+Narrative Expansion
+Exhaustion
+Transition
+Compression
+```
+
+The HTML report is intentionally structured as a main dashboard plus expandable details. The first screen focuses on conclusion, regime, confidence, key drivers, probability distribution, and heatmap. Rules, methodology, source status, and full indicator tables live in collapsible sections.
+
+Interactive controls are embedded directly into the static HTML report:
+
+- Heatmap timeframe filter: `60D`, `30D`, or `14D`
+- Heatmap signal filter by indicator row
+- Click-to-drill heatmap cells
+- Scenario engine sliders for BTC dominance, stablecoin growth, macro impulse, and narrative strength
+- Dynamic probability bars that update from the scenario assumptions
+
+Layer 4 also includes contextual rule logic, for example:
+
+```text
+IF Macro Liquidity is Positive
+AND Capital Flow is Positive
+AND BTC Dominance is falling
+THEN Narrative Expansion Probability Up
+```
+
+It also adds decision-support views:
+
+- **Confidence Scoring** grades High/Medium/Low confidence using indicator alignment, historical similarity, volatility regime, and data coverage.
+- **Regime Transition Probability** estimates the probability of the custom market ontology states.
+- **Historical Outcome Explorer** shows the closest historical regime and its reference BTC forward 30D median/max/min outcome.
+- **Narrative Rotation Heatmap** tracks AI, RWA, DeFi, and Meme category strength from CoinGecko sector rotation data when available.
+- **Signal Heatmap** visualizes recent market-state and indicator-vote history.
+
+The report compares the current layer vector against a small historical regime database:
+
+```text
+2019 Bear Recovery
+2020 QE / Liquidity Expansion
+2021 Alt Season
+2022 Liquidity Collapse
+2024 ETF Regime
+```
+
 The rule-based classifier scores the seven-column Dune feed:
 
 ```text
@@ -133,8 +194,23 @@ Other sources add supplemental votes when their data is available:
 - `Etherscan` adds ETH gas pressure when a usable gas oracle response is available.
 - `Cardanoscan` adds Cardano block freshness when latest-block data includes a recognizable timestamp.
 - `Solscan` adds Solana block freshness when latest-block data includes a recognizable timestamp.
+- `FRED` supplies Fed Funds and M2 series through public CSV endpoints.
+- `DeFiLlama` supplies stablecoin supply growth.
+- `CoinGecko` supplies BTC dominance and sector/category rotation.
 
 The five Dune indicators remain the base score. Available supplemental sources increase the max score dynamically, so the terminal and HTML report may show a score such as `+2 / +9` instead of `+2 / +5`.
+
+## Methodology
+
+The system is intentionally rule-based and explainable. Every signal keeps its source, value, vote, and rule text in the terminal output, HTML report, and JSON artifacts.
+
+- **Layer scoring:** each available indicator contributes `-1`, `0`, or `+1`; layer ratios normalize the score by the available max score.
+- **Market state classification:** the on-chain layer maps total score ratios into accumulation, bullish, neutral, distribution, and risk-off states.
+- **Historical similarity:** the current macro/capital/on-chain/narrative vector is compared with historical templates using distance-based similarity.
+- **Regime probabilities:** transition probabilities are heuristic scenario scores, not calibrated statistical forecasts.
+- **Confidence scoring:** confidence blends indicator alignment, historical similarity, volatility regime, and data coverage.
+- **Market ontology:** the headline state is resolved from the layer combination, not only the raw on-chain classifier label.
+- **Proxy treatment:** proxy metrics are labeled directly in the report so weak or unavailable data is visible instead of hidden.
 
 ## Data Quality Notes
 
@@ -145,15 +221,37 @@ When the terminal says `source=dune`, the report is using live Dune rows. Some i
 - `Exchange Flow`: live EVM CEX flow converted to BTC-equivalent units
 - `LTH/STH`: live Bitcoin spent-age rotation from Dune
 - `Miner Behaviour`: live Puell-style proxy from Dune
+- `BTC ETF Flow`: signed dollar-volume proxy from spot BTC ETF tickers, not issuer-reported ETF net creations/redemptions
 
 When the terminal says `source=demo`, the report is using deterministic demo data for local testing.
+
+## Limitations And Disclaimer
+
+This project is designed for probabilistic market-state research, not deterministic price prediction or financial advice.
+
+- Public APIs can rate-limit, change schemas, or return stale values.
+- SOPR, RHODL, ETF flow, exchange reserve pressure, and some sector metrics are practical public-data proxies.
+- The historical regime database is a reference framework and should not be treated as proof that future outcomes will repeat.
+- Live quality depends on the saved Dune query returning the required classifier columns.
+- Backtests are useful for sanity checks, but they do not remove forward-looking uncertainty.
 
 ## Backtesting And Visuals
 
 The HTML report includes:
 
-- market state timeline
-- score line chart
+- executive market ontology dashboard
+- regime wheel
+- probability distribution bars
+- key driver cards
+- scenario engine controls
+- heatmap timeframe/filter/drill-down controls
+- contextual regime logic table
+- historical regime database similarity table
+- confidence scoring
+- regime transition probability
+- historical outcome explorer
+- narrative rotation heatmap
+- market heatmap for recent state and indicator vote history
 - indicator table with 30-point sparklines
 - historical state distribution
 - state transition count
@@ -163,6 +261,7 @@ Machine-readable backtest output is saved to:
 
 ```text
 reports/backtest_report.json
+reports/regime_report.json
 ```
 
 ## Project Files
@@ -174,6 +273,7 @@ reports/onchain_report.html           Visual dashboard/report
 reports/onchain_summary.csv           Daily classification history
 reports/source_context.json           API/source status
 reports/backtest_report.json          Backtest metrics
+reports/regime_report.json            Macro/capital/on-chain/regime layer metrics
 ```
 
 ## Typical Workflow

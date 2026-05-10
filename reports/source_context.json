@@ -1,0 +1,33 @@
+{
+  "etherscan_eth_supply": "You are using a deprecated V1 endpoint, switch to Etherscan API V2 using https://docs.etherscan.io/v2-migration",
+  "etherscan_gas_oracle": "You are using a deprecated V1 endpoint, switch to Etherscan API V2 using https://docs.etherscan.io/v2-migration",
+  "etherscan_safe_gas_gwei": null,
+  "etherscan_propose_gas_gwei": null,
+  "cardanoscan_status": "fetched latest block context",
+  "cardanoscan_latest_block": {
+    "hash": "58a747f3c2544c643942ca71bb84a0c79bc5a232b5a0a6bc3ada27472df41093",
+    "previousBlockHash": "de64058be973ece7f0fbd24273de6b9cce1216b42477ed91b31b0b84c88a7207",
+    "blockHeight": 13398751,
+    "totalFees": "182535",
+    "slot": 17976,
+    "epoch": 630,
+    "absSlot": 186814776,
+    "timestamp": "2026-05-10T02:44:27.000Z",
+    "txCount": 1,
+    "assetTxCount": 0,
+    "totalOutput": "1898685655",
+    "slotLeader": "cfff13497008842ab170eae18ecf43be7eb4fa51bdd503821ddaaf19",
+    "bodySize": 241,
+    "protocolVersion": "10.8",
+    "vrfVKey": "vrf_vk12ply07ya8jzhyqmpcystrm0f4rp853cymcsn33kpx7l9s6d822gq37n0fg"
+  },
+  "fetch_solscan_context_error": "HTTP Error 401: Unauthorized",
+  "yfinance_status": "used as market context",
+  "yfinance_symbol": "BTC-USD",
+  "yfinance_latest_date": "2026-05-10",
+  "yfinance_latest_close": 80719.16,
+  "yfinance_latest_return_1d_pct": 0.66,
+  "classifier_source_note": "Base rule scores come from the Dune classifier schema. Supplemental rules can add votes from yfinance momentum, Etherscan gas pressure, Cardanoscan block freshness, and Solscan block freshness when those sources are available.",
+  "market_regime": "Early Risk-On",
+  "market_regime_aggregate_score": 0.193
+}

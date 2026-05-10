@@ -28,6 +28,7 @@ import argparse
 import contextlib
 import html
 import json
+import math
 import os
 import urllib.parse
 import urllib.request
@@ -765,6 +766,30 @@ class ClassificationResult:
         return sum(1 for signal in self.signals if signal.score < 0)
 
 
+@dataclass
+class LayerSignal:
+    indicator: str
+    value: str
+    score: int
+    signal: str
+    detail: str
+    source: str
+
+
+@dataclass
+class LayerResult:
+    layer: str
+    score: int = 0
+    max_score: int = 0
+    status: str = "Unavailable"
+    signals: list[LayerSignal] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def ratio(self) -> float:
+        return self.score / self.max_score if self.max_score else 0.0
+
+
 def _score_sopr(row: pd.Series) -> SignalResult:
     val = float(row["sopr_ma"])
     momentum = float(row.get("sopr_momentum", 0.0))
@@ -918,6 +943,629 @@ def classify_row(
         market_state=state,
         conviction=conviction,
     )
+
+
+# ---------------------------------------------------------------------------
+# STAGE 4B - MACRO / CAPITAL FLOW / REGIME LAYERS
+# ---------------------------------------------------------------------------
+
+def _resolve_simple_status(score: int, max_score: int, positive: str = "Positive", negative: str = "Negative") -> str:
+    if max_score <= 0:
+        return "Unavailable"
+    ratio = score / max_score
+    if ratio >= 0.20:
+        return positive
+    if ratio <= -0.20:
+        return negative
+    return "Neutral"
+
+
+def _score_from_threshold(value: float | None, bullish_when: str, bull: float, bear: float) -> int:
+    if value is None or pd.isna(value):
+        return 0
+    if bullish_when == "high":
+        if value >= bull:
+            return 1
+        if value <= bear:
+            return -1
+    else:
+        if value <= bull:
+            return 1
+        if value >= bear:
+            return -1
+    return 0
+
+
+def _status_text(score: int, bull: str, bear: str, neutral: str = "Neutral") -> str:
+    if score > 0:
+        return bull
+    if score < 0:
+        return bear
+    return neutral
+
+
+def fetch_yfinance_close_history(ticker: str, days: int = 120) -> pd.Series:
+    hist = fetch_yfinance_history(ticker, days=days)
+    if hist.empty or "Close" not in hist:
+        return pd.Series(dtype="float64")
+    return pd.to_numeric(hist["Close"], errors="coerce").dropna()
+
+
+def fetch_yfinance_history(ticker: str, days: int = 120) -> pd.DataFrame:
+    try:
+        import yfinance as yf
+    except ImportError:
+        return pd.DataFrame()
+
+    try:
+        with open(os.devnull, "w", encoding="utf-8") as devnull:
+            with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
+                hist = yf.download(ticker, period=f"{days}d", interval="1d", auto_adjust=True, progress=False)
+    except Exception:
+        return pd.DataFrame()
+    if hist.empty:
+        return pd.DataFrame()
+    if isinstance(hist.columns, pd.MultiIndex):
+        hist.columns = hist.columns.get_level_values(0)
+    return hist
+
+
+def _series_return(series: pd.Series, periods: int = 20) -> float | None:
+    clean = pd.to_numeric(series, errors="coerce").dropna()
+    if len(clean) <= periods:
+        return None
+    start = float(clean.iloc[-periods - 1])
+    end = float(clean.iloc[-1])
+    if start == 0:
+        return None
+    return end / start - 1
+
+
+def fetch_fred_series(series_id: str) -> pd.Series:
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={urllib.parse.quote(series_id)}"
+    try:
+        with urllib.request.urlopen(url, timeout=20) as response:
+            df = pd.read_csv(response)
+    except Exception:
+        return pd.Series(dtype="float64")
+    if series_id not in df.columns:
+        return pd.Series(dtype="float64")
+    values = pd.to_numeric(df[series_id].replace(".", np.nan), errors="coerce")
+    values.index = pd.to_datetime(df["observation_date"], errors="coerce")
+    return values.dropna()
+
+
+def fetch_defillama_stablecoins() -> dict[str, Any]:
+    return _fetch_json("https://stablecoins.llama.fi/stablecoins?includePrices=true", timeout=25)
+
+
+def _stable_total(payload: dict[str, Any], key: str = "circulating") -> float | None:
+    total = 0.0
+    found = False
+    for asset in payload.get("peggedAssets", []):
+        value = asset.get(key, {})
+        if isinstance(value, dict):
+            amount = _safe_float(value.get("peggedUSD"))
+        else:
+            amount = _safe_float(value)
+        if amount is not None:
+            total += amount
+            found = True
+    return total if found else None
+
+
+def fetch_coingecko_global() -> dict[str, Any]:
+    return _fetch_json("https://api.coingecko.com/api/v3/global", timeout=20)
+
+
+def fetch_coingecko_categories() -> list[dict[str, Any]]:
+    payload = _fetch_json("https://api.coingecko.com/api/v3/coins/categories", timeout=25)
+    return payload if isinstance(payload, list) else []
+
+
+def _add_layer_signal(signals: list[LayerSignal], indicator: str, value: str, score: int, signal: str, detail: str, source: str) -> None:
+    signals.append(LayerSignal(indicator, value, score, signal, detail, source))
+
+
+def build_macro_liquidity_layer(prefer_live: bool = True) -> LayerResult:
+    if not prefer_live:
+        return LayerResult("Macro Liquidity")
+
+    signals: list[LayerSignal] = []
+
+    us10y_ret = _series_return(fetch_yfinance_close_history("^TNX", 90), 20)
+    score = _score_from_threshold(us10y_ret, "low", -0.02, 0.02)
+    _add_layer_signal(signals, "US10Y", "n/a" if us10y_ret is None else f"{us10y_ret:+.2%}", score, _status_text(score, "Yields easing", "Yields tightening"), "20D change; lower yields support liquidity", "yfinance")
+
+    dxy_ret = _series_return(fetch_yfinance_close_history("DX-Y.NYB", 90), 20)
+    score = _score_from_threshold(dxy_ret, "low", -0.01, 0.01)
+    _add_layer_signal(signals, "DXY", "n/a" if dxy_ret is None else f"{dxy_ret:+.2%}", score, _status_text(score, "Dollar weakening", "Dollar strengthening"), "20D change; weaker USD is crypto-liquidity friendly", "yfinance")
+
+    fed = fetch_fred_series("FEDFUNDS")
+    fed_delta = None if len(fed) < 4 else float(fed.iloc[-1] - fed.iloc[-4])
+    score = _score_from_threshold(fed_delta, "low", -0.05, 0.05)
+    _add_layer_signal(signals, "Fed Rate", "n/a" if fed_delta is None else f"{fed.iloc[-1]:.2f}% ({fed_delta:+.2f})", score, _status_text(score, "Policy easing", "Policy tightening"), "latest minus 3 observations", "FRED")
+
+    m2 = fetch_fred_series("M2SL")
+    m2_growth = None if len(m2) < 4 else float(m2.iloc[-1] / m2.iloc[-4] - 1)
+    score = _score_from_threshold(m2_growth, "high", 0.01, -0.01)
+    _add_layer_signal(signals, "M2", "n/a" if m2_growth is None else f"{m2_growth:+.2%}", score, _status_text(score, "Money supply expanding", "Money supply contracting"), "3-observation growth", "FRED")
+
+    vix = fetch_yfinance_close_history("^VIX", 45)
+    vix_latest = None if vix.empty else float(vix.iloc[-1])
+    score = _score_from_threshold(vix_latest, "low", 18, 25)
+    _add_layer_signal(signals, "VIX", "n/a" if vix_latest is None else f"{vix_latest:.1f}", score, _status_text(score, "Volatility calm", "Volatility elevated"), "VIX < 18 bullish, > 25 bearish", "yfinance")
+
+    btc = fetch_yfinance_close_history("BTC-USD", 120)
+    nasdaq = fetch_yfinance_close_history("^IXIC", 120)
+    corr = None
+    nasdaq_ret = _series_return(nasdaq, 20)
+    if len(btc) > 35 and len(nasdaq) > 35:
+        aligned = pd.concat([btc.pct_change(), nasdaq.pct_change()], axis=1).dropna().tail(30)
+        if len(aligned) >= 20:
+            corr = float(aligned.iloc[:, 0].corr(aligned.iloc[:, 1]))
+    score = 0
+    if corr is not None and nasdaq_ret is not None and corr > 0.35:
+        score = 1 if nasdaq_ret > 0.03 else -1 if nasdaq_ret < -0.03 else 0
+    _add_layer_signal(signals, "NASDAQ Correlation", "n/a" if corr is None else f"{corr:.2f}", score, _status_text(score, "Risk beta supportive", "Risk beta under pressure"), "30D BTC/NASDAQ return correlation plus NASDAQ trend", "yfinance")
+
+    stable_growth = None
+    try:
+        stable_payload = fetch_defillama_stablecoins()
+        current = _stable_total(stable_payload, "circulating")
+        prev_month = _stable_total(stable_payload, "circulatingPrevMonth")
+        if current and prev_month:
+            stable_growth = current / prev_month - 1
+    except Exception:
+        stable_growth = None
+    score = _score_from_threshold(stable_growth, "high", 0.01, -0.01)
+    _add_layer_signal(signals, "Stablecoin Supply Growth", "n/a" if stable_growth is None else f"{stable_growth:+.2%}", score, _status_text(score, "Stablecoin liquidity expanding", "Stablecoin liquidity contracting"), "30D supply growth from DeFiLlama", "DeFiLlama")
+
+    layer_score = sum(signal.score for signal in signals)
+    return LayerResult("Macro Liquidity", layer_score, len(signals), _resolve_simple_status(layer_score, len(signals)), signals)
+
+
+def build_capital_flow_layer(summary: pd.DataFrame, prefer_live: bool = True) -> LayerResult:
+    if not prefer_live:
+        return LayerResult("Capital Flow")
+
+    signals: list[LayerSignal] = []
+
+    etf_tickers = ["IBIT", "FBTC", "ARKB", "BITB", "GBTC"]
+    etf_proxy = 0.0
+    etf_found = False
+    for ticker in etf_tickers:
+        hist = fetch_yfinance_history(ticker, 45)
+        if len(hist) > 6 and {"Close", "Volume"}.issubset(hist.columns):
+            close = pd.to_numeric(hist["Close"], errors="coerce")
+            volume = pd.to_numeric(hist["Volume"], errors="coerce")
+            direction = np.sign(close.pct_change()).tail(5)
+            dollar_proxy = (close.tail(5) * volume.tail(5) * direction.fillna(0)).sum()
+            if not pd.isna(dollar_proxy) and dollar_proxy != 0:
+                etf_proxy += float(dollar_proxy)
+                etf_found = True
+    score = _score_from_threshold(etf_proxy if etf_found else None, "high", 500_000_000, -500_000_000)
+    _add_layer_signal(signals, "BTC ETF Flow Proxy", "n/a" if not etf_found else f"${etf_proxy:+,.0f}", score, _status_text(score, "ETF bid supportive", "ETF pressure negative"), "5D signed dollar-volume proxy from spot BTC ETF tickers", "yfinance")
+
+    btc_dom = None
+    try:
+        global_payload = fetch_coingecko_global()
+        btc_dom = _safe_float(global_payload.get("data", {}).get("market_cap_percentage", {}).get("btc"))
+    except Exception:
+        btc_dom = None
+    score = 0
+    if btc_dom is not None:
+        score = 1 if btc_dom < 50 else -1 if btc_dom > 58 else 0
+    _add_layer_signal(signals, "BTC Dominance", "n/a" if btc_dom is None else f"{btc_dom:.1f}%", score, _status_text(score, "Alt liquidity broadening", "BTC dominance defensive"), "BTC dominance <50 bullish for broad risk, >58 defensive", "CoinGecko")
+
+    flow_latest = None
+    if not summary.empty and "exchange_flow_7d" in summary.columns:
+        flow_latest = _safe_float(summary["exchange_flow_7d"].iloc[-1])
+    score = _score_from_threshold(flow_latest, "low", -8000, 8000)
+    _add_layer_signal(signals, "Exchange Reserve Proxy", "n/a" if flow_latest is None else f"{flow_latest:+,.0f}", score, _status_text(score, "Exchange balances pressured lower", "Exchange inflow pressure"), "Uses 7D exchange net flow as reserve-pressure proxy", "Dune")
+
+    stable_rotation = None
+    try:
+        stable_payload = fetch_defillama_stablecoins()
+        current = _stable_total(stable_payload, "circulating")
+        prev_month = _stable_total(stable_payload, "circulatingPrevMonth")
+        if current and prev_month:
+            stable_rotation = current / prev_month - 1
+    except Exception:
+        stable_rotation = None
+    score = _score_from_threshold(stable_rotation, "high", 0.01, -0.01)
+    _add_layer_signal(signals, "Stablecoin Rotation", "n/a" if stable_rotation is None else f"{stable_rotation:+.2%}", score, _status_text(score, "Dry powder expanding", "Stablecoin base shrinking"), "30D stablecoin supply growth as rotation proxy", "DeFiLlama")
+
+    sector_strength = fetch_sector_rotation_strength()
+    score = _score_from_threshold(sector_strength.get("average_change_pct"), "high", 2.0, -2.0)
+    _add_layer_signal(signals, "Sector Rotation", sector_strength.get("display", "n/a"), score, _status_text(score, "Narratives attracting capital", "Narratives losing capital"), "Average 24H category market-cap change across AI/RWA/DeFi/Meme", "CoinGecko")
+
+    layer_score = sum(signal.score for signal in signals)
+    return LayerResult(
+        "Capital Flow",
+        layer_score,
+        len(signals),
+        _resolve_simple_status(layer_score, len(signals)),
+        signals,
+        {"sector_rotation": sector_strength},
+    )
+
+
+def narrative_strength_label(change_pct: float | None) -> str:
+    if change_pct is None:
+        return "Unavailable"
+    if change_pct >= 2.0:
+        return "Improving"
+    if change_pct >= 0.5:
+        return "Firming"
+    if change_pct > -0.5:
+        return "Neutral"
+    if change_pct > -2.0:
+        return "Weakening"
+    return "Exhausted"
+
+
+def fetch_sector_rotation_strength() -> dict[str, Any]:
+    try:
+        categories = fetch_coingecko_categories()
+    except Exception:
+        return {"display": "n/a", "average_change_pct": None, "leaders": [], "narratives": []}
+
+    targets = {
+        "AI": ["artificial intelligence", "ai ", "ai-"],
+        "RWA": ["real world", "rwa"],
+        "DeFi": ["defi", "decentralized finance"],
+        "Meme": ["meme"],
+    }
+    picked: dict[str, dict[str, Any]] = {}
+    for category in categories:
+        name = str(category.get("name", "")).lower()
+        category_id = str(category.get("id", "")).lower()
+        haystack = f"{name} {category_id}"
+        for key, needles in targets.items():
+            if key not in picked and any(needle in haystack for needle in needles):
+                picked[key] = category
+
+    changes: list[float] = []
+    leaders: list[str] = []
+    narratives: list[dict[str, Any]] = []
+    for key, category in picked.items():
+        change = _safe_float(category.get("market_cap_change_24h"))
+        if change is not None:
+            changes.append(change)
+            leaders.append(f"{key} {change:+.1f}%")
+            narratives.append({"narrative": key, "change_pct": round(change, 2), "strength": narrative_strength_label(change)})
+
+    avg = float(np.mean(changes)) if changes else None
+    return {
+        "display": "n/a" if avg is None else f"{avg:+.2f}% avg ({', '.join(leaders)})",
+        "average_change_pct": avg,
+        "leaders": leaders,
+        "narratives": narratives,
+    }
+
+
+def build_narrative_strength_layer(capital_layer: LayerResult) -> LayerResult:
+    sector = next((signal for signal in capital_layer.signals if signal.indicator == "Sector Rotation"), None)
+    if sector is None:
+        return LayerResult("Narrative Strength")
+    status = "Strong" if sector.score > 0 else "Weak" if sector.score < 0 else "Neutral"
+    return LayerResult("Narrative Strength", sector.score, 1, status, [sector], capital_layer.metadata)
+
+
+def build_onchain_layer_result(latest: ClassificationResult) -> LayerResult:
+    status = "Bullish" if latest.total_score / max(latest.max_score, 1) >= 0.15 else "Bearish" if latest.total_score / max(latest.max_score, 1) <= -0.15 else "Neutral"
+    signals = [
+        LayerSignal(signal.indicator, _format_signal_value(signal), signal.score, signal.signal, signal.detail, signal.source)
+        for signal in latest.signals
+        if signal.source == "dune"
+    ]
+    return LayerResult("On-chain", latest.total_score, latest.max_score, status, signals)
+
+
+HISTORICAL_REGIME_DATABASE: list[dict[str, Any]] = [
+    {
+        "period": "2019 Bear Recovery",
+        "macro": 0.10,
+        "capital": -0.10,
+        "onchain": 0.35,
+        "narrative": -0.20,
+        "regime": "Early Risk-On",
+        "btc_forward_30d_median": 12.0,
+        "btc_forward_30d_max": 38.0,
+        "btc_forward_30d_min": -6.0,
+        "notes": "Post-capitulation recovery with improving on-chain structure before broad liquidity confirmation.",
+    },
+    {
+        "period": "2020 QE / Liquidity Expansion",
+        "macro": 0.80,
+        "capital": 0.45,
+        "onchain": 0.35,
+        "narrative": 0.20,
+        "regime": "Risk-On",
+        "btc_forward_30d_median": 18.0,
+        "btc_forward_30d_max": 45.0,
+        "btc_forward_30d_min": -8.0,
+        "notes": "Macro liquidity impulse dominated; risk assets benefited from easing financial conditions.",
+    },
+    {
+        "period": "2021 Alt Season",
+        "macro": 0.45,
+        "capital": 0.70,
+        "onchain": 0.50,
+        "narrative": 0.85,
+        "regime": "Alt Risk-On",
+        "btc_forward_30d_median": 10.0,
+        "btc_forward_30d_max": 32.0,
+        "btc_forward_30d_min": -18.0,
+        "notes": "Broad capital rotation and strong narratives outperformed BTC-led exposure.",
+    },
+    {
+        "period": "2022 Liquidity Collapse",
+        "macro": -0.80,
+        "capital": -0.65,
+        "onchain": -0.55,
+        "narrative": -0.75,
+        "regime": "Risk-Off",
+        "btc_forward_30d_median": -14.0,
+        "btc_forward_30d_max": 8.0,
+        "btc_forward_30d_min": -35.0,
+        "notes": "Tightening liquidity, negative capital flow, weak narratives, and deteriorating on-chain structure.",
+    },
+    {
+        "period": "2024 ETF Regime",
+        "macro": 0.10,
+        "capital": 0.70,
+        "onchain": 0.30,
+        "narrative": 0.25,
+        "regime": "BTC-Led Risk-On",
+        "btc_forward_30d_median": 9.0,
+        "btc_forward_30d_max": 28.0,
+        "btc_forward_30d_min": -10.0,
+        "notes": "ETF-led demand and BTC dominance mattered more than broad alt rotation.",
+    },
+]
+
+
+def build_contextual_regime_rules(macro: LayerResult, capital: LayerResult, onchain: LayerResult, narrative: LayerResult) -> list[dict[str, Any]]:
+    rules: list[dict[str, Any]] = []
+    layer_map = {layer.layer: layer for layer in (macro, capital, onchain, narrative)}
+
+    def add_rule(name: str, condition: bool, result: str, explanation: str) -> None:
+        rules.append(
+            {
+                "rule": name,
+                "triggered": condition,
+                "result": result if condition else "Not triggered",
+                "explanation": explanation,
+            }
+        )
+
+    btc_dom_signal = next((signal for signal in capital.signals if signal.indicator == "BTC Dominance"), None)
+    etf_signal = next((signal for signal in capital.signals if signal.indicator == "BTC ETF Flow Proxy"), None)
+
+    add_rule(
+        "Alt Risk-On Probability",
+        macro.status == "Positive" and capital.status == "Positive" and btc_dom_signal is not None and btc_dom_signal.score > 0,
+        "Alt Risk-On Probability Up",
+        "Macro liquidity is positive, capital flow is positive, and BTC dominance is falling/broadening.",
+    )
+    add_rule(
+        "BTC-Led Risk-On",
+        capital.status == "Positive" and etf_signal is not None and etf_signal.score > 0 and (btc_dom_signal is None or btc_dom_signal.score <= 0),
+        "BTC-Led Risk-On",
+        "ETF/capital flow is supportive while BTC dominance is not yet broadening into alt risk.",
+    )
+    add_rule(
+        "On-Chain Leads Macro",
+        onchain.status == "Bullish" and macro.status in {"Neutral", "Negative"},
+        "Early Cycle Watch",
+        "On-chain has improved before macro liquidity has fully confirmed.",
+    )
+    add_rule(
+        "Liquidity Trap",
+        macro.status == "Positive" and capital.status != "Positive",
+        "Liquidity Not Yet Entering Crypto",
+        "Macro backdrop is supportive but capital-flow confirmation is missing.",
+    )
+    add_rule(
+        "Risk-Off Confirmation",
+        macro.status == "Negative" and capital.status == "Negative" and onchain.status == "Bearish",
+        "Risk-Off Confirmation",
+        "Macro, capital flow, and on-chain structure are all negative.",
+    )
+    add_rule(
+        "Narrative Weakness Drag",
+        narrative.status == "Weak" and capital.status != "Positive",
+        "Narrative Drag",
+        "Sector/narrative rotation is weak and capital flow is not offsetting it.",
+    )
+
+    for layer_name, layer in layer_map.items():
+        if layer.max_score == 0:
+            add_rule(
+                f"{layer_name} Missing Data",
+                True,
+                "Data Gap",
+                f"{layer_name} has no live signals available, so regime confidence is lower.",
+            )
+
+    return rules
+
+
+def match_historical_regime(macro: LayerResult, capital: LayerResult, onchain: LayerResult, narrative: LayerResult) -> dict[str, Any]:
+    current = {
+        "macro": macro.ratio,
+        "capital": capital.ratio,
+        "onchain": onchain.ratio,
+        "narrative": narrative.ratio,
+    }
+    matches = []
+    for record in HISTORICAL_REGIME_DATABASE:
+        distance = sum((current[key] - float(record[key])) ** 2 for key in current) ** 0.5
+        similarity = max(0.0, 1.0 - distance / 2.0)
+        matches.append(
+            {
+                "period": record["period"],
+                "regime": record["regime"],
+                "similarity": round(similarity, 3),
+                "notes": record["notes"],
+                "scores": {key: record[key] for key in current},
+                "btc_forward_30d_median": record.get("btc_forward_30d_median"),
+                "btc_forward_30d_max": record.get("btc_forward_30d_max"),
+                "btc_forward_30d_min": record.get("btc_forward_30d_min"),
+            }
+        )
+    matches.sort(key=lambda row: row["similarity"], reverse=True)
+    return {"current_vector": current, "best_match": matches[0], "matches": matches}
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(high, value))
+
+
+def _available_layers(layers: list[LayerResult]) -> list[LayerResult]:
+    return [layer for layer in layers if layer.max_score > 0]
+
+
+def compute_indicator_alignment(layers: list[LayerResult]) -> float:
+    signals = [signal.score for layer in layers for signal in layer.signals if signal.score != 0]
+    if not signals:
+        return 0.0
+    net_direction = 1 if sum(signals) >= 0 else -1
+    aligned = sum(1 for score in signals if score * net_direction > 0)
+    return aligned / len(signals)
+
+
+def compute_volatility_regime_score(macro: LayerResult) -> tuple[float, str]:
+    vix_signal = next((signal for signal in macro.signals if signal.indicator == "VIX"), None)
+    vix_value = _safe_float(vix_signal.value if vix_signal else None)
+    if vix_value is None:
+        return 0.50, "Unknown volatility regime"
+    if vix_value <= 18:
+        return 1.00, "Calm volatility"
+    if vix_value <= 25:
+        return 0.65, "Normal volatility"
+    return 0.30, "Elevated volatility"
+
+
+def build_confidence_score(macro: LayerResult, capital: LayerResult, onchain: LayerResult, narrative: LayerResult, historical_match: dict[str, Any]) -> dict[str, Any]:
+    layers = [macro, capital, onchain, narrative]
+    alignment = compute_indicator_alignment(layers)
+    similarity = float(historical_match.get("best_match", {}).get("similarity", 0.0))
+    volatility_score, volatility_label = compute_volatility_regime_score(macro)
+    data_coverage = len(_available_layers(layers)) / len(layers)
+    score = (alignment * 0.35) + (similarity * 0.30) + (volatility_score * 0.20) + (data_coverage * 0.15)
+    label = "High" if score >= 0.70 else "Medium" if score >= 0.45 else "Low"
+    return {
+        "label": label,
+        "score_pct": round(score * 100, 1),
+        "components": {
+            "indicator_alignment_pct": round(alignment * 100, 1),
+            "historical_similarity_pct": round(similarity * 100, 1),
+            "volatility_regime": volatility_label,
+            "volatility_score_pct": round(volatility_score * 100, 1),
+            "data_coverage_pct": round(data_coverage * 100, 1),
+        },
+    }
+
+
+def build_transition_probabilities(macro: LayerResult, capital: LayerResult, onchain: LayerResult, narrative: LayerResult) -> dict[str, int]:
+    macro_ratio = macro.ratio
+    capital_ratio = capital.ratio
+    onchain_ratio = onchain.ratio
+    narrative_ratio = narrative.ratio
+    btc_dom_signal = next((signal for signal in capital.signals if signal.indicator == "BTC Dominance"), None)
+    btc_dom_broadening = 1 if btc_dom_signal and btc_dom_signal.score > 0 else -1 if btc_dom_signal and btc_dom_signal.score < 0 else 0
+
+    probabilities = {
+        "Liquidity Expansion": 35 + macro_ratio * 35 + capital_ratio * 12,
+        "BTC-Led Risk-On": 35 + capital_ratio * 30 + onchain_ratio * 18 - narrative_ratio * 8 - btc_dom_broadening * 6,
+        "Early Rotation": 32 + onchain_ratio * 28 + capital_ratio * 12 - macro_ratio * 6,
+        "Narrative Expansion": 40 + macro_ratio * 18 + capital_ratio * 22 + narrative_ratio * 25 + btc_dom_broadening * 10,
+        "Exhaustion": 28 - narrative_ratio * 22 - onchain_ratio * 12 + max(0, capital_ratio) * 8,
+        "Transition": 55 - abs(macro_ratio + capital_ratio + onchain_ratio + narrative_ratio) * 12,
+        "Compression": 30 - macro_ratio * 24 - capital_ratio * 24 - onchain_ratio * 18 - narrative_ratio * 10,
+    }
+    return {name: int(round(_clamp(value, 0, 95))) for name, value in probabilities.items()}
+
+
+def resolve_market_ontology(macro: LayerResult, capital: LayerResult, onchain: LayerResult, narrative: LayerResult, aggregate: float) -> str:
+    etf_signal = next((signal for signal in capital.signals if signal.indicator == "BTC ETF Flow Proxy"), None)
+    if macro.status == "Positive" and capital.status == "Positive" and narrative.status == "Strong":
+        return "Narrative Expansion"
+    if macro.status == "Positive" and capital.status == "Positive":
+        return "Liquidity Expansion"
+    if capital.status == "Positive" and etf_signal is not None and etf_signal.score > 0:
+        return "BTC-Led Risk-On"
+    if onchain.status == "Bullish" and capital.status != "Positive":
+        return "Early Rotation"
+    if aggregate <= -0.35:
+        return "Compression"
+    if narrative.status == "Weak" and aggregate < 0.15:
+        return "Exhaustion"
+    return "Transition"
+
+
+def build_historical_outcome_explorer(historical_match: dict[str, Any]) -> dict[str, Any]:
+    best = historical_match.get("best_match", {})
+    if not best:
+        return {}
+    return {
+        "period": best.get("period", "n/a"),
+        "regime": best.get("regime", "n/a"),
+        "similarity_pct": round(float(best.get("similarity", 0)) * 100, 1),
+        "btc_forward_30d_median": best.get("btc_forward_30d_median"),
+        "btc_forward_30d_max": best.get("btc_forward_30d_max"),
+        "btc_forward_30d_min": best.get("btc_forward_30d_min"),
+        "notes": best.get("notes", ""),
+    }
+
+
+def build_narrative_rotation_heatmap(narrative: LayerResult) -> list[dict[str, Any]]:
+    sector_rotation = narrative.metadata.get("sector_rotation", {})
+    rows = sector_rotation.get("narratives", [])
+    if rows:
+        return rows
+    return [
+        {"narrative": "AI", "change_pct": None, "strength": "Unavailable"},
+        {"narrative": "RWA", "change_pct": None, "strength": "Unavailable"},
+        {"narrative": "Meme", "change_pct": None, "strength": "Unavailable"},
+        {"narrative": "DeFi", "change_pct": None, "strength": "Unavailable"},
+    ]
+
+
+def build_market_regime_engine(macro: LayerResult, capital: LayerResult, onchain: LayerResult, narrative: LayerResult) -> dict[str, Any]:
+    layers = [macro, capital, onchain, narrative]
+    available = _available_layers(layers)
+    aggregate = sum(layer.ratio for layer in available) / len(available) if available else 0.0
+    if aggregate >= 0.35:
+        regime = "Risk-On"
+    elif aggregate >= 0.12:
+        regime = "Early Risk-On"
+    elif aggregate <= -0.35:
+        regime = "Risk-Off"
+    elif aggregate <= -0.12:
+        regime = "Early Risk-Off"
+    else:
+        regime = "Neutral / Transition"
+    historical_match = match_historical_regime(macro, capital, onchain, narrative)
+    market_ontology = resolve_market_ontology(macro, capital, onchain, narrative, aggregate)
+    return {
+        "macro": macro,
+        "capital": capital,
+        "onchain": onchain,
+        "narrative": narrative,
+        "aggregate_score": round(aggregate, 3),
+        "market_regime": regime,
+        "market_ontology": market_ontology,
+        "contextual_rules": build_contextual_regime_rules(macro, capital, onchain, narrative),
+        "historical_match": historical_match,
+        "confidence": build_confidence_score(macro, capital, onchain, narrative, historical_match),
+        "transition_probabilities": build_transition_probabilities(macro, capital, onchain, narrative),
+        "historical_outcome": build_historical_outcome_explorer(historical_match),
+        "narrative_heatmap": build_narrative_rotation_heatmap(narrative),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1098,6 +1746,116 @@ def render_market_state_timeline(summary: pd.DataFrame, width: int = 860, height
     """
 
 
+def _heatmap_color(kind: str, value: Any) -> str:
+    if kind == "state":
+        return STATE_COLORS.get(str(value), "#667085")
+    numeric = _safe_float(value)
+    if numeric is None or pd.isna(numeric):
+        return "#e2e8f0"
+    if kind == "ratio":
+        if numeric >= 0.35:
+            return "#047857"
+        if numeric >= 0.15:
+            return "#84cc16"
+        if numeric <= -0.35:
+            return "#b91c1c"
+        if numeric <= -0.15:
+            return "#f59e0b"
+        return "#94a3b8"
+    if numeric > 0:
+        return "#16a34a"
+    if numeric < 0:
+        return "#dc2626"
+    return "#94a3b8"
+
+
+def _heatmap_value_label(kind: str, value: Any) -> str:
+    if kind == "state":
+        return str(value)
+    numeric = _safe_float(value)
+    if numeric is None or pd.isna(numeric):
+        return "n/a"
+    if kind == "ratio":
+        return f"{numeric:+.2f}"
+    return SCORE_LABEL.get(int(numeric), str(value))
+
+
+def render_market_heatmap(summary: pd.DataFrame, days: int = 60) -> str:
+    heatmap = summary.tail(days).reset_index(drop=True)
+    if heatmap.empty:
+        return '<div class="heatmap-empty">No market history available.</div>'
+
+    candidate_rows = [
+        ("Market State", "market_state", "state"),
+        ("Total Score", "score_ratio", "ratio"),
+        ("SOPR", "sopr_7d_ma_score", "score"),
+        ("RHODL", "rhodl_ratio_7d_ma_score", "score"),
+        ("Exchange Flow", "exchange_flow_7d_sum_score", "score"),
+        ("LTH/STH", "lth_sth_rotation_score", "score"),
+        ("Miner", "miner_behaviour_puell_7d_score", "score"),
+        ("BTC Momentum", "yfinance_btc_momentum_score", "score"),
+    ]
+    rows = [(label, column, kind) for label, column, kind in candidate_rows if column in heatmap.columns]
+    date_labels = "".join(
+        f'<div class="heatmap-date" data-day="{idx}">{_html_cell(pd.to_datetime(row["date"]).strftime("%m-%d"))}</div>'
+        for idx, row in heatmap.iterrows()
+    )
+    row_html: list[str] = []
+    for label, column, kind in rows:
+        cells = []
+        row_slug = label.lower().replace("/", "-").replace(" ", "-")
+        for idx, row in heatmap.iterrows():
+            value = row.get(column)
+            date = row.get("date", "")
+            color = _heatmap_color(kind, value)
+            value_label = _heatmap_value_label(kind, value)
+            cells.append(
+                f'<div class="heatmap-cell" style="background:{color}" '
+                f'data-day="{idx}" data-row="{_html_cell(row_slug)}" data-label="{_html_cell(label)}" '
+                f'data-date="{_html_cell(date)}" data-value="{_html_cell(value_label)}" '
+                f'title="{_html_cell(date)} | {_html_cell(label)}: {_html_cell(value_label)}"></div>'
+            )
+        row_html.append(
+            f'<div class="heatmap-label" data-row-label="{_html_cell(row_slug)}">{_html_cell(label)}</div>'
+            f'<div class="heatmap-cells" data-row-cells="{_html_cell(row_slug)}">{"".join(cells)}</div>'
+        )
+
+    return f"""
+    <div class="interaction-bar">
+      <label>Timeframe
+        <select id="heatmapTimeframe">
+          <option value="60" selected>60D</option>
+          <option value="30">30D</option>
+          <option value="14">14D</option>
+        </select>
+      </label>
+      <label>Signal
+        <select id="heatmapSignal">
+          <option value="all" selected>All signals</option>
+          {''.join(f'<option value="{_html_cell(label.lower().replace("/", "-").replace(" ", "-"))}">{_html_cell(label)}</option>' for label, _, _ in rows)}
+        </select>
+      </label>
+      <button type="button" id="resetHeatmap">Reset</button>
+    </div>
+    <div class="heatmap-legend">
+      <span><i class="legend-bull"></i>Bullish</span>
+      <span><i class="legend-neutral"></i>Neutral</span>
+      <span><i class="legend-caution"></i>Caution</span>
+      <span><i class="legend-bear"></i>Bearish</span>
+    </div>
+    <div class="heatmap">
+      <div class="heatmap-label heatmap-label-muted">Date</div>
+      <div class="heatmap-cells">{date_labels}</div>
+      {''.join(row_html)}
+    </div>
+    <div class="drilldown-panel" id="heatmapDrilldown">
+      <span>Drill-down</span>
+      <strong>Click any heatmap cell</strong>
+      <p>Date, signal, and vote will appear here.</p>
+    </div>
+    """
+
+
 def render_sparkline(values: pd.Series, width: int = 130, height: int = 34) -> str:
     points = _scale_points(pd.to_numeric(values, errors="coerce").tail(30).tolist(), width, height, pad=4)
     return f'<svg class="spark" viewBox="0 0 {width} {height}"><polyline points="{points}" /></svg>'
@@ -1139,8 +1897,233 @@ def render_backtest_tables(backtest: dict[str, Any]) -> tuple[str, str]:
     return distribution_rows, forward_rows
 
 
+def render_layer_rows(layer: LayerResult) -> str:
+    if not layer.signals:
+        return '<tr><td colspan="6">No live signals available for this layer.</td></tr>'
+    return "\n".join(
+        f"""
+        <tr>
+            <td>{_html_cell(signal.source)}</td>
+            <td>{_html_cell(signal.indicator)}</td>
+            <td>{_html_cell(signal.value)}</td>
+            <td class="score score-{signal.score}">{SCORE_LABEL.get(signal.score, signal.score)}</td>
+            <td>{_html_cell(signal.signal)}</td>
+            <td class="rule-cell"><code>{_html_cell(signal.detail)}</code></td>
+        </tr>
+        """.strip()
+        for signal in layer.signals
+    )
+
+
+def render_regime_snapshot(regime: dict[str, Any]) -> str:
+    rows = [
+        ("Macro Liquidity", regime["macro"].status),
+        ("Capital Flow", regime["capital"].status),
+        ("On-chain", regime["onchain"].status),
+        ("Narrative Strength", regime["narrative"].status),
+        ("Market Regime", regime["market_regime"]),
+    ]
+    return "\n".join(f"<tr><td>{_html_cell(label)}</td><td>{_html_cell(status)}</td></tr>" for label, status in rows)
+
+
+def render_contextual_rules(regime: dict[str, Any]) -> str:
+    rules = regime.get("contextual_rules", [])
+    if not rules:
+        return '<tr><td colspan="4">No contextual rules available.</td></tr>'
+    return "\n".join(
+        f"""
+        <tr>
+            <td>{_html_cell(rule["rule"])}</td>
+            <td>{'Yes' if rule["triggered"] else 'No'}</td>
+            <td>{_html_cell(rule["result"])}</td>
+            <td>{_html_cell(rule["explanation"])}</td>
+        </tr>
+        """.strip()
+        for rule in rules
+    )
+
+
+def render_historical_regime_rows(regime: dict[str, Any]) -> str:
+    matches = regime.get("historical_match", {}).get("matches", [])
+    if not matches:
+        return '<tr><td colspan="4">No historical matches available.</td></tr>'
+    return "\n".join(
+        f"""
+        <tr>
+            <td>{_html_cell(match["period"])}</td>
+            <td>{_html_cell(match["regime"])}</td>
+            <td>{float(match["similarity"]) * 100:.1f}%</td>
+            <td>{_html_cell(match["notes"])}</td>
+        </tr>
+        """.strip()
+        for match in matches
+    )
+
+
+def render_confidence_scoring(regime: dict[str, Any]) -> str:
+    confidence = regime.get("confidence", {})
+    components = confidence.get("components", {})
+    if not confidence:
+        return '<tr><td colspan="2">No confidence score available.</td></tr>'
+    rows = [
+        ("Confidence", f"{confidence.get('label', 'n/a')} ({confidence.get('score_pct', 0)}%)"),
+        ("Indicator Alignment", f"{components.get('indicator_alignment_pct', 0)}%"),
+        ("Historical Similarity", f"{components.get('historical_similarity_pct', 0)}%"),
+        ("Volatility Regime", components.get("volatility_regime", "n/a")),
+        ("Data Coverage", f"{components.get('data_coverage_pct', 0)}%"),
+    ]
+    return "\n".join(f"<tr><td>{_html_cell(label)}</td><td>{_html_cell(value)}</td></tr>" for label, value in rows)
+
+
+def render_transition_probabilities(regime: dict[str, Any]) -> str:
+    probabilities = regime.get("transition_probabilities", {})
+    if not probabilities:
+        return '<tr><td colspan="2">No transition probabilities available.</td></tr>'
+    ordered = sorted(probabilities.items(), key=lambda item: item[1], reverse=True)
+    return "\n".join(f"<tr><td>{_html_cell(name)}</td><td>{int(value)}%</td></tr>" for name, value in ordered)
+
+
+def render_probability_bars(regime: dict[str, Any]) -> str:
+    probabilities = regime.get("transition_probabilities", {})
+    if not probabilities:
+        return '<div class="empty-note">No probability distribution available.</div>'
+    ordered = sorted(probabilities.items(), key=lambda item: item[1], reverse=True)
+    return "\n".join(
+        f"""
+        <div class="prob-row">
+          <div class="prob-label">{_html_cell(name)}</div>
+          <div class="prob-track"><span data-prob-bar="{_html_cell(name)}" data-base="{int(value)}" style="width:{int(value)}%"></span></div>
+          <div class="prob-value" data-prob-value="{_html_cell(name)}">{int(value)}%</div>
+        </div>
+        """.strip()
+        for name, value in ordered
+    )
+
+
+def render_key_drivers(regime: dict[str, Any]) -> str:
+    drivers: list[tuple[str, str, int]] = []
+    for layer_key in ("macro", "capital", "onchain", "narrative"):
+        layer = regime[layer_key]
+        ranked = sorted(layer.signals, key=lambda signal: abs(signal.score), reverse=True)
+        for signal in ranked:
+            if signal.score != 0:
+                drivers.append((layer.layer, f"{signal.indicator}: {signal.signal}", signal.score))
+                break
+    if not drivers:
+        drivers.append(("Read", "Signals are mixed; no single directional driver dominates.", 0))
+    return "\n".join(
+        f"""
+        <div class="driver driver-{score}">
+          <span>{_html_cell(layer)}</span>
+          <strong>{_html_cell(text)}</strong>
+        </div>
+        """.strip()
+        for layer, text, score in drivers[:4]
+    )
+
+
+def render_regime_wheel(regime: dict[str, Any]) -> str:
+    labels = [
+        "Liquidity Expansion",
+        "BTC-Led Risk-On",
+        "Early Rotation",
+        "Narrative Expansion",
+        "Exhaustion",
+        "Transition",
+        "Compression",
+    ]
+    active = regime.get("market_ontology", "Transition")
+    items = []
+    for idx, label in enumerate(labels):
+        angle = -90 + (360 / len(labels)) * idx
+        x = 140 + 104 * math.cos(math.radians(angle))
+        y = 140 + 104 * math.sin(math.radians(angle))
+        klass = "wheel-node active" if label == active else "wheel-node"
+        items.append(
+            f'<div class="{klass}" style="left:{x:.1f}px; top:{y:.1f}px;" title="{_html_cell(label)}">{_html_cell(label)}</div>'
+        )
+    return f"""
+    <div class="regime-wheel">
+      <div class="wheel-ring"></div>
+      <div class="wheel-core">
+        <span>Current</span>
+        <strong>{_html_cell(active)}</strong>
+      </div>
+      {''.join(items)}
+    </div>
+    """
+
+
+def render_historical_outcome_explorer(regime: dict[str, Any]) -> str:
+    outcome = regime.get("historical_outcome", {})
+    if not outcome:
+        return '<tr><td colspan="2">No historical outcome match available.</td></tr>'
+    rows = [
+        ("When Regime Resembled", f"{outcome.get('period', 'n/a')} ({outcome.get('similarity_pct', 0)}% similarity)"),
+        ("Matched Regime", outcome.get("regime", "n/a")),
+        ("BTC Forward 30D Median", _signed_pct(outcome.get("btc_forward_30d_median"))),
+        ("BTC Forward 30D Max", _signed_pct(outcome.get("btc_forward_30d_max"))),
+        ("BTC Forward 30D Min", _signed_pct(outcome.get("btc_forward_30d_min"))),
+        ("Read", outcome.get("notes", "")),
+    ]
+    return "\n".join(f"<tr><td>{_html_cell(label)}</td><td>{_html_cell(value)}</td></tr>" for label, value in rows)
+
+
+def render_narrative_heatmap(regime: dict[str, Any]) -> str:
+    rows = regime.get("narrative_heatmap", [])
+    if not rows:
+        return '<tr><td colspan="3">No narrative rotation data available.</td></tr>'
+    return "\n".join(
+        f"""
+        <tr>
+            <td>{_html_cell(row.get("narrative", "n/a"))}</td>
+            <td>{_html_cell(_signed_pct(row.get("change_pct")))}</td>
+            <td>{_html_cell(row.get("strength", "n/a"))}</td>
+        </tr>
+        """.strip()
+        for row in rows
+    )
+
+
+def layer_to_dict(layer: LayerResult) -> dict[str, Any]:
+    return {
+        "layer": layer.layer,
+        "score": layer.score,
+        "max_score": layer.max_score,
+        "ratio": layer.ratio,
+        "status": layer.status,
+        "signals": [signal.__dict__ for signal in layer.signals],
+        "metadata": layer.metadata,
+    }
+
+
+def regime_to_dict(regime: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "market_regime": regime["market_regime"],
+        "market_ontology": regime.get("market_ontology"),
+        "aggregate_score": regime["aggregate_score"],
+        "contextual_rules": regime.get("contextual_rules", []),
+        "historical_match": regime.get("historical_match", {}),
+        "confidence": regime.get("confidence", {}),
+        "transition_probabilities": regime.get("transition_probabilities", {}),
+        "historical_outcome": regime.get("historical_outcome", {}),
+        "narrative_heatmap": regime.get("narrative_heatmap", []),
+        "layers": {
+            "macro": layer_to_dict(regime["macro"]),
+            "capital": layer_to_dict(regime["capital"]),
+            "onchain": layer_to_dict(regime["onchain"]),
+            "narrative": layer_to_dict(regime["narrative"]),
+        },
+    }
+
+
 def _html_cell(value: Any) -> str:
     return html.escape("" if value is None else str(value))
+
+
+def _signed_pct(value: Any) -> str:
+    numeric = _safe_float(value)
+    return "n/a" if numeric is None else f"{numeric:+.1f}%"
 
 
 def _compact_context_value(value: Any, max_len: int = 180) -> str:
@@ -1175,6 +2158,45 @@ def build_data_quality_notes(source: str, context: dict[str, Any]) -> list[str]:
     return notes
 
 
+def render_methodology_rows() -> str:
+    rows = [
+        (
+            "Layer scoring",
+            "Each live indicator votes -1, 0, or +1. Layer score is normalized by available max score so missing sources reduce coverage but do not fabricate a signal.",
+        ),
+        (
+            "Historical similarity",
+            "The current macro, capital-flow, on-chain, and narrative layer vector is compared with historical regime templates using Euclidean distance.",
+        ),
+        (
+            "Regime probabilities",
+            "Transition probabilities are heuristic scenario scores derived from layer ratios, BTC dominance behavior, narrative strength, and on-chain confirmation.",
+        ),
+        (
+            "Confidence scoring",
+            "Confidence blends indicator alignment, historical similarity, volatility regime, and data coverage. Higher agreement and fuller data raise confidence.",
+        ),
+        (
+            "Proxy assumptions",
+            "Public-data proxies are used when institutional-grade datasets are unavailable, including Dune-derived SOPR/RHODL, ETF signed dollar volume, and exchange reserve pressure.",
+        ),
+    ]
+    return "\n".join(f"<tr><td>{_html_cell(label)}</td><td>{_html_cell(detail)}</td></tr>" for label, detail in rows)
+
+
+def render_limitation_items(source: str) -> str:
+    items = [
+        "This system is designed for probabilistic market-state analysis, not deterministic price prediction.",
+        "Several metrics are proxy-based because exact vendor-grade cost-basis, ETF flow, and exchange-reserve datasets are not always public.",
+        "Live status depends on API availability, saved Dune query schema, and rate limits from third-party providers.",
+        "Historical regime matching is a reference framework, not a claim that future returns will repeat past regimes.",
+        "When the report says source=demo, outputs are for local testing only. Use source=dune for the live on-chain layer.",
+    ]
+    if source == "dune":
+        items[-1] = "This run is using live Dune rows for the on-chain layer; supplemental sources vote only when their API responses are usable."
+    return "\n".join(f"<li>{_html_cell(item)}</li>" for item in items)
+
+
 def write_html_report(
     latest: ClassificationResult,
     summary: pd.DataFrame,
@@ -1182,6 +2204,7 @@ def write_html_report(
     source: str,
     context: dict[str, Any],
     backtest: dict[str, Any],
+    regime: dict[str, Any],
 ) -> None:
     latest_rows = "\n".join(
         f"""
@@ -1211,11 +2234,32 @@ def write_html_report(
         f"<li><b>{_html_cell(key)}</b>: {_html_cell(_compact_context_value(value))}</li>"
         for key, value in context.items()
     ) or "<li>No cross-chain context configured.</li>"
-    score_chart = render_score_line_chart(summary)
-    state_timeline = render_market_state_timeline(summary)
+    market_heatmap = render_market_heatmap(summary)
     spark_rows = render_indicator_spark_table(summary)
     distribution_rows, forward_rows = render_backtest_tables(backtest)
     quality_notes = "\n".join(f"<li>{_html_cell(note)}</li>" for note in build_data_quality_notes(source, context))
+    regime_rows = render_regime_snapshot(regime)
+    contextual_rule_rows = render_contextual_rules(regime)
+    historical_regime_rows = render_historical_regime_rows(regime)
+    confidence_rows = render_confidence_scoring(regime)
+    transition_probability_rows = render_transition_probabilities(regime)
+    probability_bars = render_probability_bars(regime)
+    key_driver_cards = render_key_drivers(regime)
+    regime_wheel = render_regime_wheel(regime)
+    historical_outcome_rows = render_historical_outcome_explorer(regime)
+    narrative_heatmap_rows = render_narrative_heatmap(regime)
+    methodology_rows = render_methodology_rows()
+    limitation_items = render_limitation_items(source)
+    best_match = regime.get("historical_match", {}).get("best_match", {})
+    best_match_text = (
+        "n/a"
+        if not best_match
+        else f"{best_match.get('period')} ({float(best_match.get('similarity', 0)) * 100:.1f}% similarity)"
+    )
+    top_transition = max(regime.get("transition_probabilities", {"Transition": 0}).items(), key=lambda item: item[1])
+    macro_rows = render_layer_rows(regime["macro"])
+    capital_rows = render_layer_rows(regime["capital"])
+    narrative_rows = render_layer_rows(regime["narrative"])
 
     html = f"""<!doctype html>
 <html lang="en">
@@ -1226,58 +2270,284 @@ def write_html_report(
   <style>
     :root {{
       color-scheme: light;
-      --ink: #172026;
-      --muted: #5c6873;
-      --line: #d7dee5;
-      --bg: #f7f9fb;
+      --ink: #111827;
+      --muted: #64748b;
+      --line: #d9e2ec;
+      --bg: #f3f6f9;
       --panel: #ffffff;
-      --bull: #087f5b;
-      --bear: #b42318;
-      --neutral: #475467;
+      --panel-soft: #f8fafc;
+      --brand: #0f172a;
+      --accent: #2563eb;
+      --bull: #047857;
+      --bear: #b91c1c;
+      --neutral: #475569;
+      --shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
     }}
     body {{
       margin: 0;
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: var(--bg);
       color: var(--ink);
+      line-height: 1.5;
     }}
     main {{
-      width: min(1120px, calc(100% - 32px));
-      margin: 28px auto 48px;
+      width: min(1180px, calc(100% - 32px));
+      margin: 24px auto 56px;
     }}
     header {{
       display: grid;
       grid-template-columns: 1fr auto;
-      gap: 16px;
-      align-items: end;
-      border-bottom: 1px solid var(--line);
-      padding-bottom: 18px;
+      gap: 24px;
+      align-items: center;
+      padding: 26px 28px;
+      background: var(--brand);
+      color: white;
+      border: 1px solid #1e293b;
+      box-shadow: var(--shadow);
     }}
     h1, h2 {{ margin: 0; letter-spacing: 0; }}
-    h1 {{ font-size: clamp(26px, 4vw, 44px); }}
-    h2 {{ font-size: 18px; margin-top: 32px; margin-bottom: 12px; }}
-    .meta {{ color: var(--muted); margin-top: 8px; }}
+    h1 {{ font-size: clamp(28px, 4vw, 44px); line-height: 1.05; }}
+    h2 {{
+      font-size: 13px;
+      margin-top: 30px;
+      margin-bottom: 12px;
+      color: var(--muted);
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }}
+    .eyebrow {{
+      color: #93c5fd;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }}
+    .meta {{ color: #cbd5e1; margin-top: 10px; }}
     .state {{
       text-align: right;
       min-width: 260px;
     }}
     .state strong {{
       display: block;
-      font-size: 22px;
+      font-size: 28px;
+      line-height: 1.1;
     }}
     .score-pill {{
       display: inline-block;
-      margin-top: 8px;
-      padding: 6px 10px;
-      border: 1px solid var(--line);
-      background: var(--panel);
+      margin-top: 10px;
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.08);
       font-weight: 700;
+      color: #e2e8f0;
+    }}
+    .report-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      align-items: start;
+    }}
+    .executive-grid {{
+      display: grid;
+      grid-template-columns: minmax(300px, 0.85fr) minmax(420px, 1.15fr);
+      gap: 18px;
+      align-items: stretch;
+      margin-top: 18px;
+    }}
+    .section {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+      padding: 18px;
+      margin-top: 18px;
+    }}
+    .section-title {{
+      margin: 0 0 12px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }}
+    .section-wide {{
+      grid-column: 1 / -1;
+    }}
+    .hero-panel {{
+      background: #0f172a;
+      color: #e2e8f0;
+      border-color: #1e293b;
+      min-height: 320px;
+    }}
+    .hero-panel .section-title {{ color: #93c5fd; }}
+    .hero-regime {{
+      font-size: clamp(34px, 5vw, 56px);
+      line-height: 0.95;
+      letter-spacing: 0;
+      color: #ffffff;
+      margin: 14px 0;
+    }}
+    .hero-copy {{
+      color: #cbd5e1;
+      max-width: 46rem;
+      margin: 0 0 18px;
+    }}
+    .hero-kpis {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }}
+    .hero-kpi {{
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.06);
+      padding: 12px;
+    }}
+    .hero-kpi span {{
+      display: block;
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }}
+    .hero-kpi b {{
+      display: block;
+      color: #ffffff;
+      font-size: 18px;
+      margin-top: 4px;
+    }}
+    .driver-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }}
+    .driver {{
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.06);
+      padding: 12px;
+    }}
+    .driver span {{
+      display: block;
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }}
+    .driver strong {{
+      color: #e2e8f0;
+      font-size: 13px;
+    }}
+    .driver-1 {{ border-left: 3px solid #22c55e; }}
+    .driver-0 {{ border-left: 3px solid #94a3b8; }}
+    .driver--1 {{ border-left: 3px solid #ef4444; }}
+    .focus-panel {{
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 18px;
+      align-items: center;
+    }}
+    .regime-wheel {{
+      position: relative;
+      width: 280px;
+      height: 280px;
+      margin: 0 auto;
+    }}
+    .wheel-ring {{
+      position: absolute;
+      inset: 32px;
+      border: 1px solid #dbe3ec;
+      border-radius: 50%;
+      background: radial-gradient(circle, #ffffff 0 45%, #f8fafc 46% 100%);
+    }}
+    .wheel-core {{
+      position: absolute;
+      left: 82px;
+      top: 88px;
+      width: 116px;
+      height: 104px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      background: #0f172a;
+      color: white;
+      padding: 8px;
+      box-shadow: 0 16px 34px rgba(15, 23, 42, 0.18);
+    }}
+    .wheel-core span {{
+      display: block;
+      color: #93c5fd;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }}
+    .wheel-core strong {{
+      display: block;
+      font-size: 13px;
+      line-height: 1.1;
+      margin-top: 4px;
+    }}
+    .wheel-node {{
+      position: absolute;
+      width: 104px;
+      min-height: 28px;
+      transform: translate(-50%, -50%);
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 5px 6px;
+      background: #eef2f6;
+      border: 1px solid #d9e2ec;
+      color: #475569;
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1.1;
+      text-transform: uppercase;
+    }}
+    .wheel-node.active {{
+      background: #2563eb;
+      border-color: #1d4ed8;
+      color: white;
+      box-shadow: 0 10px 24px rgba(37, 99, 235, 0.28);
+    }}
+    .prob-row {{
+      display: grid;
+      grid-template-columns: 152px 1fr 44px;
+      gap: 10px;
+      align-items: center;
+      margin: 9px 0;
+    }}
+    .prob-label {{
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 800;
+    }}
+    .prob-track {{
+      height: 10px;
+      background: #e2e8f0;
+      overflow: hidden;
+    }}
+    .prob-track span {{
+      display: block;
+      height: 100%;
+      background: #2563eb;
+    }}
+    .prob-value {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-align: right;
     }}
     .quality {{
       margin: 18px 0 0;
-      padding: 12px 14px;
-      background: var(--panel);
+      padding: 16px 18px;
+      background: #fff7ed;
       border: 1px solid var(--line);
+      border-left: 4px solid #f59e0b;
     }}
     .quality ul {{
       margin: 8px 0 0;
@@ -1290,14 +2560,22 @@ def write_html_report(
       table-layout: fixed;
     }}
     th, td {{
-      padding: 10px 12px;
+      padding: 11px 12px;
       border-bottom: 1px solid var(--line);
       text-align: left;
       vertical-align: top;
       font-size: 14px;
       overflow-wrap: anywhere;
     }}
-    th {{ color: var(--muted); font-weight: 700; }}
+    th {{
+      color: var(--muted);
+      font-weight: 800;
+      background: var(--panel-soft);
+      font-size: 12px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }}
+    tr:last-child td {{ border-bottom: 0; }}
     code {{
       font-size: 12px;
       background: #eef2f6;
@@ -1350,6 +2628,178 @@ def write_html_report(
       stroke-linejoin: round;
       stroke-linecap: round;
     }}
+    .heatmap {{
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      gap: 8px 12px;
+      align-items: center;
+    }}
+    .heatmap-cells {{
+      display: grid;
+      grid-template-columns: repeat(60, minmax(8px, 1fr));
+      gap: 3px;
+      min-width: 540px;
+    }}
+    .heatmap-cell {{
+      height: 18px;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+    }}
+    .heatmap-date {{
+      color: var(--muted);
+      font-size: 9px;
+      text-align: center;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      height: 46px;
+      white-space: nowrap;
+    }}
+    .heatmap-label {{
+      color: var(--ink);
+      font-weight: 800;
+      font-size: 13px;
+    }}
+    .heatmap-label-muted {{
+      color: var(--muted);
+    }}
+    .heatmap-legend {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }}
+    .heatmap-legend span {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }}
+    .heatmap-legend i {{
+      width: 12px;
+      height: 12px;
+      display: inline-block;
+      border: 1px solid rgba(15, 23, 42, 0.1);
+    }}
+    .legend-bull {{ background: #16a34a; }}
+    .legend-neutral {{ background: #94a3b8; }}
+    .legend-caution {{ background: #f59e0b; }}
+    .legend-bear {{ background: #dc2626; }}
+    .heatmap-empty {{
+      padding: 16px;
+      color: var(--muted);
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+    }}
+    .interaction-bar {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding: 12px;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+    }}
+    .interaction-bar label {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }}
+    select, button, input[type="range"] {{
+      accent-color: var(--accent);
+    }}
+    select, button {{
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--ink);
+      padding: 7px 10px;
+      font: inherit;
+      font-size: 13px;
+    }}
+    button {{
+      cursor: pointer;
+      font-weight: 800;
+    }}
+    .heatmap-cell {{
+      cursor: crosshair;
+    }}
+    .heatmap-cell.is-selected {{
+      outline: 2px solid #0f172a;
+      outline-offset: 1px;
+    }}
+    .is-hidden {{
+      display: none !important;
+    }}
+    .drilldown-panel {{
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 6px 14px;
+      margin-top: 14px;
+      padding: 14px;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+    }}
+    .drilldown-panel span {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      grid-row: span 2;
+    }}
+    .drilldown-panel strong {{
+      color: var(--ink);
+    }}
+    .drilldown-panel p {{
+      margin: 0;
+      color: var(--muted);
+    }}
+    .scenario-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }}
+    .scenario-control {{
+      padding: 12px;
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+    }}
+    .scenario-control label {{
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      margin-bottom: 8px;
+    }}
+    .scenario-control input {{
+      width: 100%;
+    }}
+    .scenario-note {{
+      margin-top: 14px;
+      padding: 12px;
+      border-left: 3px solid var(--accent);
+      background: #eff6ff;
+      color: #1e3a8a;
+      font-size: 13px;
+      font-weight: 700;
+    }}
+    .compact-table td:first-child {{
+      color: var(--muted);
+      font-weight: 700;
+      width: 34%;
+    }}
     .kpis {{
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1359,12 +2809,66 @@ def write_html_report(
     .kpi {{
       background: var(--panel);
       border: 1px solid var(--line);
-      padding: 12px;
+      padding: 14px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
     }}
     .kpi b {{
       display: block;
       font-size: 20px;
       margin-top: 4px;
+    }}
+    .regime-table td:first-child {{
+      color: var(--muted);
+      font-size: 15px;
+      font-weight: 700;
+    }}
+    .regime-table td:last-child {{
+      font-size: 18px;
+      font-weight: 800;
+      text-align: right;
+    }}
+    .callout {{
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+      padding: 12px 14px;
+      margin-top: 12px;
+      color: var(--muted);
+    }}
+    .disclaimer {{
+      background: #f8fafc;
+      border-left: 4px solid #64748b;
+    }}
+    details.section {{
+      padding: 0;
+    }}
+    details.section summary {{
+      cursor: pointer;
+      list-style: none;
+      padding: 16px 18px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }}
+    details.section summary::-webkit-details-marker {{ display: none; }}
+    details.section summary::after {{
+      content: "Open";
+      float: right;
+      color: var(--accent);
+      font-size: 12px;
+      letter-spacing: 0;
+      text-transform: none;
+    }}
+    details.section[open] summary::after {{ content: "Close"; }}
+    .details-body {{
+      padding: 0 18px 18px;
+    }}
+    .empty-note {{
+      color: var(--muted);
+      padding: 12px;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
     }}
     ul {{
       margin: 0;
@@ -1373,6 +2877,12 @@ def write_html_report(
     }}
     @media (max-width: 760px) {{
       header {{ grid-template-columns: 1fr; }}
+      .executive-grid {{ grid-template-columns: 1fr; }}
+      .focus-panel {{ grid-template-columns: 1fr; }}
+      .report-grid {{ grid-template-columns: 1fr; }}
+      .hero-kpis, .driver-grid {{ grid-template-columns: 1fr; }}
+      .scenario-grid {{ grid-template-columns: 1fr; }}
+      .section-wide {{ grid-column: auto; }}
       .kpis {{ grid-template-columns: 1fr 1fr; }}
       .state {{ text-align: left; min-width: 0; }}
       table {{ display: block; overflow-x: auto; }}
@@ -1383,34 +2893,171 @@ def write_html_report(
   <main>
     <header>
       <div>
-        <h1>On-Chain Market Report</h1>
+        <div class="eyebrow">Crypto Market Intelligence</div>
+        <h1>Market Regime Command Center</h1>
         <div class="meta">Generated {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")} | data source: {source}</div>
       </div>
       <div class="state">
-        <strong>{latest.market_state}</strong>
-        <div class="score-pill">Score {latest.total_score:+d} / +{latest.max_score} | {latest.conviction}</div>
+        <strong>{_html_cell(regime.get("market_ontology", regime.get("market_regime", "Transition")))}</strong>
+        <div class="score-pill">Confidence {regime.get("confidence", {}).get("label", "n/a")} | On-chain {latest.total_score:+d}/{latest.max_score}</div>
       </div>
     </header>
 
-    <section class="quality">
-      <strong>Data Quality Notes</strong>
-      <ul>{quality_notes}</ul>
+    <section class="section hero-panel">
+      <div class="section-title">Executive Read</div>
+      <div class="hero-regime">{_html_cell(regime.get("market_ontology", "Transition"))}</div>
+      <p class="hero-copy">The framework classifies the current setup through macro liquidity, capital flow, on-chain structure, and narrative rotation. Heavy rule detail is kept in the appendix below.</p>
+      <div class="hero-kpis">
+        <div class="hero-kpi"><span>Regime</span><b>{_html_cell(regime.get("market_regime", "n/a"))}</b></div>
+        <div class="hero-kpi"><span>Confidence</span><b>{regime.get("confidence", {}).get("label", "n/a")} ({regime.get("confidence", {}).get("score_pct", 0)}%)</b></div>
+        <div class="hero-kpi"><span>Top Transition</span><b>{_html_cell(top_transition[0])} {int(top_transition[1])}%</b></div>
+      </div>
+      <div class="driver-grid">{key_driver_cards}</div>
     </section>
 
-    <h2>Latest Indicator Read</h2>
-    <table>
-      <thead>
-        <tr><th>Source</th><th>Indicator</th><th>Value</th><th>Score</th><th>Signal</th><th>Rule</th></tr>
-      </thead>
-      <tbody>{latest_rows}</tbody>
-    </table>
+    <div class="executive-grid">
+      <section class="section focus-panel">
+        {regime_wheel}
+        <div>
+          <div class="section-title">Market Ontology</div>
+          <p class="hero-copy" style="color: var(--muted);">A custom seven-state taxonomy: Liquidity Expansion, BTC-Led Risk-On, Early Rotation, Narrative Expansion, Exhaustion, Transition, and Compression.</p>
+          <div class="callout"><b>Closest historical analog:</b> {_html_cell(best_match_text)}</div>
+        </div>
+      </section>
 
-    <h2>Visuals</h2>
-    <div class="chart-wrap">
-      {state_timeline}
-      {score_chart}
+      <section class="section">
+        <div class="section-title">Regime Probability Distribution</div>
+        {probability_bars}
+        <div class="scenario-grid" id="scenarioEngine">
+          <div class="scenario-control">
+            <label>BTC dominance <span id="btcDominanceValue">54%</span></label>
+            <input type="range" min="45" max="65" value="54" id="btcDominanceSlider">
+          </div>
+          <div class="scenario-control">
+            <label>Stablecoin growth <span id="stableGrowthValue">0%</span></label>
+            <input type="range" min="-5" max="8" value="0" id="stableGrowthSlider">
+          </div>
+          <div class="scenario-control">
+            <label>Macro impulse <span id="macroImpulseValue">0</span></label>
+            <input type="range" min="-2" max="2" value="0" id="macroImpulseSlider">
+          </div>
+          <div class="scenario-control">
+            <label>Narrative strength <span id="narrativeImpulseValue">0</span></label>
+            <input type="range" min="-2" max="2" value="0" id="narrativeImpulseSlider">
+          </div>
+        </div>
+        <div class="scenario-note" id="scenarioRead">Scenario engine: adjust assumptions to model regime-transition pressure.</div>
+      </section>
     </div>
 
+    <section class="section section-wide">
+    <h2>Signal Heatmap</h2>
+    <div class="chart-wrap">
+      {market_heatmap}
+    </div>
+    </section>
+
+    <section class="section">
+    <h2>Narrative Rotation Heatmap</h2>
+    <table>
+      <thead>
+        <tr><th>Narrative</th><th>24H Change</th><th>Strength</th></tr>
+      </thead>
+      <tbody>{narrative_heatmap_rows}</tbody>
+    </table>
+    </section>
+
+    <section class="section">
+    <h2>Historical Outcome Explorer</h2>
+    <table class="compact-table">
+      <thead>
+        <tr><th>Outcome</th><th>Read</th></tr>
+      </thead>
+      <tbody>{historical_outcome_rows}</tbody>
+    </table>
+    </section>
+
+    <details class="section section-wide">
+      <summary>Layer Details</summary>
+      <div class="details-body">
+        <h2>Layer 1: Macro Liquidity</h2>
+        <table>
+          <thead><tr><th>Source</th><th>Indicator</th><th>Value</th><th>Score</th><th>Signal</th><th>Rule</th></tr></thead>
+          <tbody>{macro_rows}</tbody>
+        </table>
+        <h2>Layer 2: Capital Flow</h2>
+        <table>
+          <thead><tr><th>Source</th><th>Indicator</th><th>Value</th><th>Score</th><th>Signal</th><th>Rule</th></tr></thead>
+          <tbody>{capital_rows}</tbody>
+        </table>
+        <h2>Narrative Strength</h2>
+        <table>
+          <thead><tr><th>Source</th><th>Indicator</th><th>Value</th><th>Score</th><th>Signal</th><th>Rule</th></tr></thead>
+          <tbody>{narrative_rows}</tbody>
+        </table>
+        <h2>Layer 3: On-Chain Indicator Read</h2>
+        <table>
+          <thead><tr><th>Source</th><th>Indicator</th><th>Value</th><th>Score</th><th>Signal</th><th>Rule</th></tr></thead>
+          <tbody>{latest_rows}</tbody>
+        </table>
+      </div>
+    </details>
+
+    <details class="section section-wide">
+      <summary>Rules, Confidence, And Methodology</summary>
+      <div class="details-body">
+        <h2>Confidence Scoring</h2>
+        <table class="compact-table">
+          <thead><tr><th>Component</th><th>Read</th></tr></thead>
+          <tbody>{confidence_rows}</tbody>
+        </table>
+        <h2>Contextual Regime Logic</h2>
+        <table>
+          <thead><tr><th>Rule</th><th>Triggered</th><th>Result</th><th>Explanation</th></tr></thead>
+          <tbody>{contextual_rule_rows}</tbody>
+        </table>
+        <h2>Methodology</h2>
+        <table class="compact-table">
+          <thead><tr><th>Area</th><th>Method</th></tr></thead>
+          <tbody>{methodology_rows}</tbody>
+        </table>
+      </div>
+    </details>
+
+    <details class="section section-wide">
+      <summary>Historical Database And Backtest</summary>
+      <div class="details-body">
+        <h2>Historical Regime Database</h2>
+        <table>
+          <thead><tr><th>Period</th><th>Regime</th><th>Similarity</th><th>Notes</th></tr></thead>
+          <tbody>{historical_regime_rows}</tbody>
+        </table>
+        <h2>Backtest</h2>
+        <div class="kpis">
+          <div class="kpi">Rows<b>{backtest.get("rows", 0)}</b></div>
+          <div class="kpi">Period<b>{backtest.get("start_date", "n/a")} to {backtest.get("end_date", "n/a")}</b></div>
+          <div class="kpi">Transitions<b>{backtest.get("state_transitions", 0)}</b></div>
+          <div class="kpi">Avg Score<b>{backtest.get("avg_score", 0)}</b></div>
+        </div>
+        <h2>State Distribution</h2>
+        <table>
+          <thead><tr><th>Market State</th><th>Count</th></tr></thead>
+          <tbody>{distribution_rows}</tbody>
+        </table>
+        <h2>Forward Returns By State</h2>
+        <table>
+          <thead><tr><th>Market State</th><th>Samples</th><th>Mean 7D Return</th><th>Median 7D Return</th></tr></thead>
+          <tbody>{forward_rows}</tbody>
+        </table>
+        <h2>Recent Classifications</h2>
+        <table>
+          <thead><tr><th>Date</th><th>Score</th><th>Market State</th><th>Conviction</th></tr></thead>
+          <tbody>{recent_rows}</tbody>
+        </table>
+      </div>
+    </details>
+
+    <section class="section section-wide">
     <h2>Indicator Sparklines</h2>
     <table>
       <thead>
@@ -1418,42 +3065,118 @@ def write_html_report(
       </thead>
       <tbody>{spark_rows}</tbody>
     </table>
+    </section>
 
-    <h2>Backtest</h2>
-    <div class="kpis">
-      <div class="kpi">Rows<b>{backtest.get("rows", 0)}</b></div>
-      <div class="kpi">Period<b>{backtest.get("start_date", "n/a")} to {backtest.get("end_date", "n/a")}</b></div>
-      <div class="kpi">Transitions<b>{backtest.get("state_transitions", 0)}</b></div>
-      <div class="kpi">Avg Score<b>{backtest.get("avg_score", 0)}</b></div>
-    </div>
+    <section class="section disclaimer section-wide">
+    <h2>Disclaimer / Limitations</h2>
+    <ul>{limitation_items}</ul>
+    </section>
 
-    <h2>State Distribution</h2>
-    <table>
-      <thead>
-        <tr><th>Market State</th><th>Count</th></tr>
-      </thead>
-      <tbody>{distribution_rows}</tbody>
-    </table>
-
-    <h2>Forward Returns By State</h2>
-    <table>
-      <thead>
-        <tr><th>Market State</th><th>Samples</th><th>Mean 7D Return</th><th>Median 7D Return</th></tr>
-      </thead>
-      <tbody>{forward_rows}</tbody>
-    </table>
-
-    <h2>Recent Classifications</h2>
-    <table>
-      <thead>
-        <tr><th>Date</th><th>Score</th><th>Market State</th><th>Conviction</th></tr>
-      </thead>
-      <tbody>{recent_rows}</tbody>
-    </table>
-
-    <h2>Cross-Chain Source Status</h2>
-    <ul>{context_items}</ul>
+    <details class="section section-wide">
+      <summary>Data Quality And Source Status</summary>
+      <div class="details-body">
+        <h2>Data Quality Notes</h2>
+        <ul>{quality_notes}</ul>
+        <h2>Cross-Chain Source Status</h2>
+        <ul>{context_items}</ul>
+      </div>
+    </details>
   </main>
+  <script>
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+    function updateHeatmap() {{
+      const timeframe = Number(document.getElementById("heatmapTimeframe")?.value || 60);
+      const signal = document.getElementById("heatmapSignal")?.value || "all";
+      const allCells = Array.from(document.querySelectorAll(".heatmap-cell, .heatmap-date"));
+      const dayValues = allCells.map((node) => Number(node.dataset.day)).filter((value) => !Number.isNaN(value));
+      const maxDay = Math.max(...dayValues, 0);
+      const minVisibleDay = Math.max(0, maxDay - timeframe + 1);
+
+      document.querySelectorAll(".heatmap-date, .heatmap-cell").forEach((node) => {{
+        const day = Number(node.dataset.day);
+        node.classList.toggle("is-hidden", day < minVisibleDay);
+      }});
+      document.querySelectorAll("[data-row-label], [data-row-cells]").forEach((node) => {{
+        const row = node.dataset.rowLabel || node.dataset.rowCells;
+        node.classList.toggle("is-hidden", signal !== "all" && row !== signal);
+      }});
+    }}
+
+    function bindHeatmap() {{
+      document.getElementById("heatmapTimeframe")?.addEventListener("change", updateHeatmap);
+      document.getElementById("heatmapSignal")?.addEventListener("change", updateHeatmap);
+      document.getElementById("resetHeatmap")?.addEventListener("click", () => {{
+        document.getElementById("heatmapTimeframe").value = "60";
+        document.getElementById("heatmapSignal").value = "all";
+        updateHeatmap();
+      }});
+      document.querySelectorAll(".heatmap-cell").forEach((cell) => {{
+        cell.addEventListener("click", () => {{
+          document.querySelectorAll(".heatmap-cell.is-selected").forEach((node) => node.classList.remove("is-selected"));
+          cell.classList.add("is-selected");
+          const panel = document.getElementById("heatmapDrilldown");
+          if (panel) {{
+            panel.innerHTML = `<span>Drill-down</span><strong>${{cell.dataset.date}} | ${{cell.dataset.label}}</strong><p>Signal read: ${{cell.dataset.value}}</p>`;
+          }}
+        }});
+      }});
+      updateHeatmap();
+    }}
+
+    function bindScenarioEngine() {{
+      const sliders = {{
+        btc: document.getElementById("btcDominanceSlider"),
+        stable: document.getElementById("stableGrowthSlider"),
+        macro: document.getElementById("macroImpulseSlider"),
+        narrative: document.getElementById("narrativeImpulseSlider"),
+      }};
+      if (!sliders.btc || !sliders.stable || !sliders.macro || !sliders.narrative) return;
+
+      const update = () => {{
+        const btc = Number(sliders.btc.value);
+        const stable = Number(sliders.stable.value);
+        const macro = Number(sliders.macro.value);
+        const narrative = Number(sliders.narrative.value);
+        document.getElementById("btcDominanceValue").textContent = `${{btc}}%`;
+        document.getElementById("stableGrowthValue").textContent = `${{stable}}%`;
+        document.getElementById("macroImpulseValue").textContent = macro;
+        document.getElementById("narrativeImpulseValue").textContent = narrative;
+
+        const adjustments = {{
+          "Liquidity Expansion": stable * 2.0 + macro * 7,
+          "BTC-Led Risk-On": (btc >= 55 ? 8 : -4) + macro * 3,
+          "Early Rotation": (btc < 54 ? 8 : -3) + stable * 1.2,
+          "Narrative Expansion": (btc < 54 ? 12 : -6) + stable * 1.8 + narrative * 9,
+          "Exhaustion": (btc > 58 ? 7 : 0) - stable * 1.2 - narrative * 7,
+          "Transition": -Math.abs(macro + narrative) * 4,
+          "Compression": -stable * 1.8 - macro * 8 - narrative * 3,
+        }};
+
+        let leader = ["Transition", 0];
+        document.querySelectorAll("[data-prob-bar]").forEach((bar) => {{
+          const name = bar.dataset.probBar;
+          const base = Number(bar.dataset.base || 0);
+          const value = Math.round(clamp(base + (adjustments[name] || 0), 0, 95));
+          bar.style.width = `${{value}}%`;
+          const label = document.querySelector(`[data-prob-value="${{CSS.escape(name)}}"]`);
+          if (label) label.textContent = `${{value}}%`;
+          if (value > leader[1]) leader = [name, value];
+        }});
+
+        const note = document.getElementById("scenarioRead");
+        if (note) {{
+          note.textContent = `Scenario read: ${{leader[0]}} becomes the strongest transition at ${{leader[1]}}%.`;
+        }}
+      }};
+
+      Object.values(sliders).forEach((slider) => slider.addEventListener("input", update));
+      update();
+    }}
+
+    bindHeatmap();
+    bindScenarioEngine();
+  </script>
 </body>
 </html>
 """
@@ -1468,22 +3191,26 @@ def export_artifacts(
     source: str,
     context: dict[str, Any],
     backtest: dict[str, Any],
+    regime: dict[str, Any],
 ) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     summary_path = output_dir / "onchain_summary.csv"
     html_path = output_dir / "onchain_report.html"
     context_path = output_dir / "source_context.json"
     backtest_path = output_dir / "backtest_report.json"
+    regime_path = output_dir / "regime_report.json"
 
     summary.to_csv(summary_path, index=False)
-    write_html_report(latest, summary, html_path, source=source, context=context, backtest=backtest)
+    write_html_report(latest, summary, html_path, source=source, context=context, backtest=backtest, regime=regime)
     context_path.write_text(json.dumps(context, indent=2, default=str), encoding="utf-8")
     backtest_path.write_text(json.dumps(backtest, indent=2, default=str), encoding="utf-8")
+    regime_path.write_text(json.dumps(regime_to_dict(regime), indent=2, default=str), encoding="utf-8")
     return {
         "summary_csv": summary_path,
         "html_report": html_path,
         "source_context": context_path,
         "backtest_report": backtest_path,
+        "regime_report": regime_path,
     }
 
 
@@ -1526,10 +3253,35 @@ def run_pipeline(
             "Unavailable indicators were proxy-filled so the pipeline can run."
         )
     latest = classify_row(features.iloc[-1], context=cross_chain_context, calibration=config.calibration)
-    artifacts = export_artifacts(summary, latest, output_dir, source=source, context=cross_chain_context, backtest=backtest)
+    macro_layer = build_macro_liquidity_layer(prefer_live=prefer_live)
+    capital_layer = build_capital_flow_layer(summary, prefer_live=prefer_live)
+    onchain_layer = build_onchain_layer_result(latest)
+    narrative_layer = build_narrative_strength_layer(capital_layer)
+    regime = build_market_regime_engine(macro_layer, capital_layer, onchain_layer, narrative_layer)
+    cross_chain_context["market_regime"] = regime["market_regime"]
+    cross_chain_context["market_regime_aggregate_score"] = regime["aggregate_score"]
+    artifacts = export_artifacts(
+        summary,
+        latest,
+        output_dir,
+        source=source,
+        context=cross_chain_context,
+        backtest=backtest,
+        regime=regime,
+    )
 
     if verbose:
         print_report(latest, source=source)
+        print()
+        print("  Market regime engine:")
+        for label, layer in (
+            ("Macro Liquidity", macro_layer),
+            ("Capital Flow", capital_layer),
+            ("On-chain", onchain_layer),
+            ("Narrative Strength", narrative_layer),
+        ):
+            print(f"    {label:<20} {layer.status:<22} ({layer.score:+d}/+{layer.max_score})")
+        print(f"    {'Market Regime':<20} {regime['market_regime']:<22} ({regime['aggregate_score']:+.2f})")
         print()
         print("  14-day state distribution:")
         last14 = summary.tail(14)["market_state"].value_counts()

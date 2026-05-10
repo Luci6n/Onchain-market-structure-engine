@@ -1,0 +1,27 @@
+{
+  "rows": 25,
+  "start_date": "2026-04-14",
+  "end_date": "2026-05-08",
+  "state_distribution": {
+    "MILD BULLISH": 20,
+    "BULLISH TREND": 4,
+    "NEUTRAL / SIDEWAYS": 1
+  },
+  "state_transitions": 7,
+  "avg_score": 1.48,
+  "avg_score_ratio": 0.249,
+  "forward_return_7d_by_state": [
+    {
+      "market_state": "BULLISH TREND",
+      "count": 4,
+      "mean_pct": 0.95,
+      "median_pct": 0.21
+    },
+    {
+      "market_state": "MILD BULLISH",
+      "count": 14,
+      "mean_pct": 2.84,
+      "median_pct": 2.53
+    }
+  ]
+}

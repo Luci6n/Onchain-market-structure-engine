@@ -1,27 +1,33 @@
 {
   "rows": 25,
-  "start_date": "2026-04-14",
-  "end_date": "2026-05-08",
+  "start_date": "2026-04-17",
+  "end_date": "2026-05-11",
   "state_distribution": {
-    "MILD BULLISH": 20,
-    "BULLISH TREND": 4,
-    "NEUTRAL / SIDEWAYS": 1
+    "MILD BULLISH": 19,
+    "NEUTRAL / SIDEWAYS": 3,
+    "BULLISH TREND": 3
   },
-  "state_transitions": 7,
-  "avg_score": 1.48,
-  "avg_score_ratio": 0.249,
+  "state_transitions": 9,
+  "avg_score": 1.28,
+  "avg_score_ratio": 0.213,
   "forward_return_7d_by_state": [
     {
       "market_state": "BULLISH TREND",
-      "count": 4,
-      "mean_pct": 0.95,
-      "median_pct": 0.21
+      "count": 3,
+      "mean_pct": 0.3,
+      "median_pct": -2.51
     },
     {
       "market_state": "MILD BULLISH",
       "count": 14,
-      "mean_pct": 2.84,
-      "median_pct": 2.53
+      "mean_pct": 2.82,
+      "median_pct": 2.52
+    },
+    {
+      "market_state": "NEUTRAL / SIDEWAYS",
+      "count": 1,
+      "mean_pct": 0.43,
+      "median_pct": 0.43
     }
   ]
 }

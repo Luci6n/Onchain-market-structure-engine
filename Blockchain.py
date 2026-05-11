@@ -30,6 +30,7 @@ import html
 import json
 import math
 import os
+import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
@@ -280,6 +281,11 @@ class SourceConfig:
     symbol: str = "BTC-USD"
     days: int = 180
     demo_seed: int = 42
+    dune_max_age_hours: int = 6
+    dune_refresh_on_run: bool = True
+    dune_refresh_timeout_seconds: int = 240
+    dune_poll_seconds: int = 5
+    stale_after_days: int = 1
     calibration: StateCalibration = field(default_factory=StateCalibration)
 
     @classmethod
@@ -294,6 +300,11 @@ class SourceConfig:
             symbol=os.getenv("MARKET_SYMBOL", "BTC-USD"),
             days=int(os.getenv("ONCHAIN_DAYS", "180")),
             demo_seed=int(os.getenv("ONCHAIN_DEMO_SEED", "42")),
+            dune_max_age_hours=int(os.getenv("DUNE_MAX_AGE_HOURS", "6")),
+            dune_refresh_on_run=os.getenv("DUNE_REFRESH_ON_RUN", "1").strip().lower() not in {"0", "false", "no"},
+            dune_refresh_timeout_seconds=int(os.getenv("DUNE_REFRESH_TIMEOUT_SECONDS", "240")),
+            dune_poll_seconds=int(os.getenv("DUNE_POLL_SECONDS", "5")),
+            stale_after_days=int(os.getenv("ONCHAIN_STALE_AFTER_DAYS", "1")),
             calibration=StateCalibration.from_env(),
         )
 
@@ -328,10 +339,79 @@ def fetch_dune_data(config: SourceConfig) -> pd.DataFrame:
     return normalize_onchain_frame(raw, source_name="dune")
 
 
+def _dune_api_json(
+    config: SourceConfig,
+    path: str,
+    method: str = "GET",
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if not config.dune_api_key:
+        raise RuntimeError("Set DUNE_API_KEY to fetch Dune data.")
+
+    data = None if body is None else json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        f"https://api.dune.com/api/v1{path}",
+        method=method,
+        data=data,
+        headers={
+            "X-Dune-API-Key": config.dune_api_key,
+            "Content-Type": "application/json",
+            "User-Agent": "onchain-pipeline/1.0",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def fetch_dune_fresh_result(config: SourceConfig) -> pd.DataFrame:
+    """Execute the saved Dune query and return fresh rows from the completed run."""
+    if not config.dune_query_id:
+        raise RuntimeError("Set DUNE_QUERY_ID to fetch Dune data.")
+
+    execution = _dune_api_json(config, f"/query/{config.dune_query_id}/execute", method="POST", body={})
+    execution_id = execution.get("execution_id")
+    if not execution_id:
+        raise RuntimeError(f"Dune execution did not return an execution_id: {execution}")
+
+    deadline = time.monotonic() + config.dune_refresh_timeout_seconds
+    status: dict[str, Any] = execution
+    while time.monotonic() < deadline:
+        status = _dune_api_json(config, f"/execution/{execution_id}/status")
+        if status.get("is_execution_finished"):
+            break
+        time.sleep(max(config.dune_poll_seconds, 1))
+
+    state = status.get("state")
+    if not status.get("is_execution_finished"):
+        raise TimeoutError(
+            f"Dune execution {execution_id} did not finish within {config.dune_refresh_timeout_seconds}s; last state={state}"
+        )
+    if state != "QUERY_STATE_COMPLETED":
+        raise RuntimeError(f"Dune execution {execution_id} finished with state={state}: {status}")
+
+    result_payload = _dune_api_json(config, f"/execution/{execution_id}/results?limit=5000")
+    rows = result_payload.get("result", {}).get("rows", [])
+    frame = pd.DataFrame(rows)
+    frame.attrs["dune_execution_id"] = execution_id
+    frame.attrs["dune_execution_submitted_at"] = status.get("submitted_at")
+    frame.attrs["dune_execution_ended_at"] = status.get("execution_ended_at")
+    frame.attrs["dune_refresh_status"] = "fresh_execution"
+    return frame
+
+
 def fetch_dune_raw_data(config: SourceConfig) -> pd.DataFrame:
     """Fetch raw rows from the configured Dune query without enforcing schema."""
     if not config.dune_api_key or not config.dune_query_id:
         raise RuntimeError("Set DUNE_API_KEY and DUNE_QUERY_ID to fetch Dune data.")
+
+    direct_refresh_error: str | None = None
+    if config.dune_refresh_on_run:
+        try:
+            frame = fetch_dune_fresh_result(config)
+            frame.attrs["dune_max_age_hours"] = config.dune_max_age_hours
+            return frame
+        except Exception as exc:
+            direct_refresh_error = str(exc)
 
     try:
         from dune_client.client import DuneClient
@@ -339,9 +419,37 @@ def fetch_dune_raw_data(config: SourceConfig) -> pd.DataFrame:
         raise RuntimeError("Install dune-client to fetch Dune data: pip install dune-client") from exc
 
     dune = DuneClient(api_key=config.dune_api_key)
-    result = dune.get_latest_result(int(config.dune_query_id))
+    refresh_error: str | None = None
+    try:
+        result = dune.get_latest_result(int(config.dune_query_id), max_age_hours=config.dune_max_age_hours)
+    except Exception as exc:
+        refresh_error = str(exc)
+        result = dune.get_latest_result(int(config.dune_query_id))
+
     rows = result.result.rows if hasattr(result, "result") else result["result"]["rows"]
-    return pd.DataFrame(rows)
+    frame = pd.DataFrame(rows)
+
+    times = getattr(result, "times", None)
+    execution_id = getattr(result, "execution_id", None)
+    if times is not None:
+        ended_at = getattr(times, "execution_ended_at", None)
+        submitted_at = getattr(times, "submitted_at", None)
+        if ended_at:
+            frame.attrs["dune_execution_ended_at"] = ended_at
+        if submitted_at:
+            frame.attrs["dune_execution_submitted_at"] = submitted_at
+    if execution_id:
+        frame.attrs["dune_execution_id"] = execution_id
+    frame.attrs["dune_max_age_hours"] = config.dune_max_age_hours
+    if direct_refresh_error:
+        frame.attrs["dune_direct_refresh_warning"] = (
+            f"Dune direct refresh failed, using cached query result instead: {direct_refresh_error}"
+        )
+    if refresh_error:
+        frame.attrs["dune_refresh_warning"] = (
+            f"Dune refresh failed, using last cached query result instead: {refresh_error}"
+        )
+    return frame
 
 
 def fetch_yfinance_market_context(config: SourceConfig) -> pd.DataFrame:
@@ -481,26 +589,30 @@ def fetch_etherscan_context(config: SourceConfig) -> dict[str, Any]:
     if not config.etherscan_api_key:
         return {}
 
+    base_url = "https://api.etherscan.io/v2/api"
     params = urllib.parse.urlencode(
         {
+            "chainid": "1",
             "module": "stats",
             "action": "ethsupply2",
             "apikey": config.etherscan_api_key,
         }
     )
-    supply_payload = _fetch_json(f"https://api.etherscan.io/api?{params}")
+    supply_payload = _fetch_json(f"{base_url}?{params}")
 
     gas_params = urllib.parse.urlencode(
         {
+            "chainid": "1",
             "module": "gastracker",
             "action": "gasoracle",
             "apikey": config.etherscan_api_key,
         }
     )
-    gas_payload = _fetch_json(f"https://api.etherscan.io/api?{gas_params}")
+    gas_payload = _fetch_json(f"{base_url}?{gas_params}")
     gas_result = gas_payload.get("result") if isinstance(gas_payload, dict) else {}
 
     return {
+        "etherscan_api_version": "v2",
         "etherscan_eth_supply": supply_payload.get("result"),
         "etherscan_gas_oracle": gas_result,
         "etherscan_safe_gas_gwei": _safe_float(gas_result.get("SafeGasPrice")) if isinstance(gas_result, dict) else None,
@@ -536,8 +648,24 @@ def fetch_solscan_context(config: SourceConfig) -> dict[str, Any]:
     if not config.solscan_api_key:
         return {}
 
-    headers = {"token": config.solscan_api_key, "User-Agent": "onchain-pipeline/1.0"}
-    payload = _fetch_json("https://pro-api.solscan.io/v2.0/block/last", headers=headers)
+    url = "https://pro-api.solscan.io/v2.0/block/last"
+    header_options = (
+        {"token": config.solscan_api_key, "User-Agent": "onchain-pipeline/1.0"},
+        {"Authorization": f"Bearer {config.solscan_api_key}", "User-Agent": "onchain-pipeline/1.0"},
+        {"X-API-KEY": config.solscan_api_key, "User-Agent": "onchain-pipeline/1.0"},
+    )
+    errors: list[str] = []
+    payload: dict[str, Any] | None = None
+    for headers in header_options:
+        try:
+            payload = _fetch_json(url, headers=headers)
+            break
+        except Exception as exc:
+            errors.append(str(exc))
+
+    if payload is None:
+        raise RuntimeError("; ".join(errors))
+
     return {
         "solscan_status": "fetched latest block context",
         "solscan_latest_block": payload,
@@ -612,6 +740,11 @@ def build_partial_dune_proxy(raw_dune: pd.DataFrame, config: SourceConfig, reaso
         symbol=config.symbol,
         days=len(partial),
         demo_seed=config.demo_seed,
+        dune_max_age_hours=config.dune_max_age_hours,
+        dune_refresh_on_run=config.dune_refresh_on_run,
+        dune_refresh_timeout_seconds=config.dune_refresh_timeout_seconds,
+        dune_poll_seconds=config.dune_poll_seconds,
+        stale_after_days=config.stale_after_days,
         calibration=config.calibration,
     )
     completed = build_demo_onchain_data(proxy_config).iloc[-len(partial):].reset_index(drop=True)
@@ -659,6 +792,37 @@ def normalize_onchain_frame(df: pd.DataFrame, source_name: str) -> pd.DataFrame:
     return normalized
 
 
+def _latest_frame_date(frame: pd.DataFrame) -> pd.Timestamp | None:
+    if frame.empty or "timestamp" not in frame.columns:
+        return None
+
+    timestamps = pd.to_datetime(frame["timestamp"], errors="coerce")
+    if timestamps.dropna().empty:
+        return None
+    return timestamps.max()
+
+
+def annotate_onchain_freshness(frame: pd.DataFrame, source: str, config: SourceConfig) -> None:
+    latest_timestamp = _latest_frame_date(frame)
+    if latest_timestamp is None:
+        frame.attrs["onchain_freshness_status"] = "unknown"
+        frame.attrs["onchain_freshness_warning"] = "No usable timestamp was found in the on-chain rows."
+        return
+
+    latest_date = latest_timestamp.date()
+    today = datetime.now(timezone.utc).date()
+    age_days = max((today - latest_date).days, 0)
+    frame.attrs["onchain_latest_date"] = latest_date.isoformat()
+    frame.attrs["onchain_row_age_days"] = age_days
+    frame.attrs["onchain_freshness_status"] = "fresh" if age_days <= config.stale_after_days else "stale"
+
+    if age_days > config.stale_after_days:
+        frame.attrs["onchain_freshness_warning"] = (
+            f"{source} latest on-chain row is {latest_date.isoformat()}, "
+            f"{age_days} days behind current UTC date {today.isoformat()}."
+        )
+
+
 def fetch_onchain_data(config: SourceConfig, prefer_live: bool = True) -> tuple[pd.DataFrame, str]:
     """
     Fetch Dune data first. If unavailable, return deterministic demo data.
@@ -667,15 +831,20 @@ def fetch_onchain_data(config: SourceConfig, prefer_live: bool = True) -> tuple[
         try:
             raw_dune = fetch_dune_raw_data(config)
             try:
-                return normalize_onchain_frame(raw_dune, source_name="dune"), "dune"
+                normalized = normalize_onchain_frame(raw_dune, source_name="dune")
+                annotate_onchain_freshness(normalized, "Dune", config)
+                return normalized, "dune"
             except ValueError as exc:
                 proxy = build_partial_dune_proxy(raw_dune, config, reason=str(exc))
+                annotate_onchain_freshness(proxy, "Dune partial proxy", config)
                 print(f"[data] Dune query is live but incomplete, using partial Dune proxy data: {exc}")
                 return proxy, "dune_partial_proxy"
         except Exception as exc:
             print(f"[data] Dune unavailable, using demo data: {exc}")
 
-    return normalize_onchain_frame(build_demo_onchain_data(config), source_name="demo"), "demo"
+    demo = normalize_onchain_frame(build_demo_onchain_data(config), source_name="demo")
+    annotate_onchain_freshness(demo, "Demo", config)
+    return demo, "demo"
 
 
 def merge_market_context(onchain: pd.DataFrame, market: pd.DataFrame) -> pd.DataFrame:
@@ -1616,6 +1785,49 @@ def print_report(result: ClassificationResult, source: str = "unknown") -> None:
     print("=" * width)
 
 
+def print_source_health(source: str, context: dict[str, Any]) -> None:
+    print("  Source health:")
+    latest_date = context.get("onchain_latest_date", "unknown")
+    freshness = context.get("onchain_freshness_status", "unknown")
+    age_days = context.get("onchain_row_age_days", "unknown")
+    execution_ended = context.get("dune_execution_ended_at")
+    execution_text = f", executed={execution_ended}" if execution_ended else ""
+    print(f"    Dune/on-chain: source={source}, latest_row={latest_date}, age={age_days}d, status={freshness}{execution_text}")
+
+    yfinance_date = context.get("yfinance_latest_date")
+    yfinance_status = context.get("yfinance_status", "not configured")
+    print(f"    yfinance: {yfinance_status}" + (f", latest={yfinance_date}" if yfinance_date else ""))
+
+    if context.get("etherscan_safe_gas_gwei") is not None or context.get("etherscan_propose_gas_gwei") is not None:
+        gas = context.get("etherscan_safe_gas_gwei") or context.get("etherscan_propose_gas_gwei")
+        print(f"    Etherscan: live gas oracle, gas={gas} gwei")
+    elif context.get("fetch_etherscan_context_error"):
+        print(f"    Etherscan: error={context['fetch_etherscan_context_error']}")
+    else:
+        print("    Etherscan: unavailable")
+
+    if context.get("cardanoscan_latest_block"):
+        print("    Cardanoscan: live latest block")
+    elif context.get("fetch_cardanoscan_context_error"):
+        print(f"    Cardanoscan: error={context['fetch_cardanoscan_context_error']}")
+    else:
+        print("    Cardanoscan: unavailable")
+
+    if context.get("solscan_latest_block"):
+        print("    Solscan: live latest block")
+    elif context.get("fetch_solscan_context_error"):
+        print(f"    Solscan: error={context['fetch_solscan_context_error']}")
+    else:
+        print("    Solscan: unavailable")
+
+    if context.get("onchain_freshness_warning"):
+        print(f"    WARNING: {context['onchain_freshness_warning']}")
+    if context.get("dune_direct_refresh_warning"):
+        print(f"    WARNING: {context['dune_direct_refresh_warning']}")
+    if context.get("dune_refresh_warning"):
+        print(f"    WARNING: {context['dune_refresh_warning']}")
+
+
 def build_summary_df(df: pd.DataFrame, calibration: StateCalibration | None = None) -> pd.DataFrame:
     records = []
     for _, row in df.iterrows():
@@ -2142,6 +2354,13 @@ def build_data_quality_notes(source: str, context: dict[str, Any]) -> list[str]:
         notes.append("Dune classifier rows are live.")
     elif source == "dune_partial_proxy":
         notes.append("Dune is live but missing classifier columns; unavailable metrics were proxy-filled.")
+
+    if context.get("onchain_freshness_warning"):
+        notes.append(str(context["onchain_freshness_warning"]))
+    if context.get("dune_direct_refresh_warning"):
+        notes.append(str(context["dune_direct_refresh_warning"]))
+    if context.get("dune_refresh_warning"):
+        notes.append(str(context["dune_refresh_warning"]))
 
     notes.extend(
         [
@@ -3243,6 +3462,21 @@ def run_pipeline(
         "Supplemental rules can add votes from yfinance momentum, Etherscan gas pressure, "
         "Cardanoscan block freshness, and Solscan block freshness when those sources are available."
     )
+    for attr_key, context_key in (
+        ("dune_execution_id", "dune_execution_id"),
+        ("dune_execution_ended_at", "dune_execution_ended_at"),
+        ("dune_execution_submitted_at", "dune_execution_submitted_at"),
+        ("dune_max_age_hours", "dune_max_age_hours"),
+        ("dune_refresh_status", "dune_refresh_status"),
+        ("dune_direct_refresh_warning", "dune_direct_refresh_warning"),
+        ("dune_refresh_warning", "dune_refresh_warning"),
+        ("onchain_latest_date", "onchain_latest_date"),
+        ("onchain_row_age_days", "onchain_row_age_days"),
+        ("onchain_freshness_status", "onchain_freshness_status"),
+        ("onchain_freshness_warning", "onchain_freshness_warning"),
+    ):
+        if raw.attrs.get(attr_key) is not None:
+            cross_chain_context[context_key] = raw.attrs[attr_key]
     if raw.attrs.get("dune_warning"):
         cross_chain_context["dune_warning"] = raw.attrs["dune_warning"]
     if raw.attrs.get("dune_columns"):
@@ -3272,6 +3506,8 @@ def run_pipeline(
 
     if verbose:
         print_report(latest, source=source)
+        print()
+        print_source_health(source, cross_chain_context)
         print()
         print("  Market regime engine:")
         for label, layer in (
@@ -3324,6 +3560,11 @@ if __name__ == "__main__":
             symbol=env_config.symbol,
             days=args.days,
             demo_seed=env_config.demo_seed,
+            dune_max_age_hours=env_config.dune_max_age_hours,
+            dune_refresh_on_run=env_config.dune_refresh_on_run,
+            dune_refresh_timeout_seconds=env_config.dune_refresh_timeout_seconds,
+            dune_poll_seconds=env_config.dune_poll_seconds,
+            stale_after_days=env_config.stale_after_days,
             calibration=env_config.calibration,
         )
 

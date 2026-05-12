@@ -172,23 +172,23 @@
   "narrative_heatmap": [
     {
       "narrative": "RWA",
-      "change_pct": -0.38,
-      "strength": "Neutral"
-    },
-    {
-      "narrative": "DeFi",
-      "change_pct": 0.47,
-      "strength": "Neutral"
-    },
-    {
-      "narrative": "Meme",
-      "change_pct": 0.72,
+      "change_pct": 1.47,
       "strength": "Firming"
     },
     {
+      "narrative": "DeFi",
+      "change_pct": -1.07,
+      "strength": "Weakening"
+    },
+    {
+      "narrative": "Meme",
+      "change_pct": -1.88,
+      "strength": "Weakening"
+    },
+    {
       "narrative": "AI",
-      "change_pct": 2.12,
-      "strength": "Improving"
+      "change_pct": -0.53,
+      "strength": "Weakening"
     }
   ],
   "layers": {
@@ -201,7 +201,7 @@
       "signals": [
         {
           "indicator": "US10Y",
-          "value": "+2.07%",
+          "value": "+2.63%",
           "score": -1,
           "signal": "Yields tightening",
           "detail": "20D change; lower yields support liquidity",
@@ -209,7 +209,7 @@
         },
         {
           "indicator": "DXY",
-          "value": "-0.38%",
+          "value": "+0.04%",
           "score": 0,
           "signal": "Neutral",
           "detail": "20D change; weaker USD is crypto-liquidity friendly",
@@ -233,7 +233,7 @@
         },
         {
           "indicator": "VIX",
-          "value": "18.2",
+          "value": "18.4",
           "score": 0,
           "signal": "Neutral",
           "detail": "VIX < 18 bullish, > 25 bearish",
@@ -249,7 +249,7 @@
         },
         {
           "indicator": "Stablecoin Supply Growth",
-          "value": "+1.52%",
+          "value": "+1.39%",
           "score": 1,
           "signal": "Stablecoin liquidity expanding",
           "detail": "30D supply growth from DeFiLlama",
@@ -267,7 +267,7 @@
       "signals": [
         {
           "indicator": "BTC ETF Flow Proxy",
-          "value": "$+3,443,562,201",
+          "value": "$+1,841,736,894",
           "score": 1,
           "signal": "ETF bid supportive",
           "detail": "5D signed dollar-volume proxy from spot BTC ETF tickers",
@@ -283,7 +283,7 @@
         },
         {
           "indicator": "Exchange Reserve Proxy",
-          "value": "+394",
+          "value": "+89",
           "score": 0,
           "signal": "Neutral",
           "detail": "Uses 7D exchange net flow as reserve-pressure proxy",
@@ -291,7 +291,7 @@
         },
         {
           "indicator": "Stablecoin Rotation",
-          "value": "+1.52%",
+          "value": "+1.39%",
           "score": 1,
           "signal": "Dry powder expanding",
           "detail": "30D stablecoin supply growth as rotation proxy",
@@ -299,7 +299,7 @@
         },
         {
           "indicator": "Sector Rotation",
-          "value": "+0.73% avg (RWA -0.4%, DeFi +0.5%, Meme +0.7%, AI +2.1%)",
+          "value": "-0.50% avg (RWA +1.5%, DeFi -1.1%, Meme -1.9%, AI -0.5%)",
           "score": 0,
           "signal": "Neutral",
           "detail": "Average 24H category market-cap change across AI/RWA/DeFi/Meme",
@@ -308,34 +308,34 @@
       ],
       "metadata": {
         "sector_rotation": {
-          "display": "+0.73% avg (RWA -0.4%, DeFi +0.5%, Meme +0.7%, AI +2.1%)",
-          "average_change_pct": 0.7303810722871329,
+          "display": "-0.50% avg (RWA +1.5%, DeFi -1.1%, Meme -1.9%, AI -0.5%)",
+          "average_change_pct": -0.5009542432052193,
           "leaders": [
-            "RWA -0.4%",
-            "DeFi +0.5%",
-            "Meme +0.7%",
-            "AI +2.1%"
+            "RWA +1.5%",
+            "DeFi -1.1%",
+            "Meme -1.9%",
+            "AI -0.5%"
           ],
           "narratives": [
             {
               "narrative": "RWA",
-              "change_pct": -0.38,
-              "strength": "Neutral"
-            },
-            {
-              "narrative": "DeFi",
-              "change_pct": 0.47,
-              "strength": "Neutral"
-            },
-            {
-              "narrative": "Meme",
-              "change_pct": 0.72,
+              "change_pct": 1.47,
               "strength": "Firming"
             },
             {
+              "narrative": "DeFi",
+              "change_pct": -1.07,
+              "strength": "Weakening"
+            },
+            {
+              "narrative": "Meme",
+              "change_pct": -1.88,
+              "strength": "Weakening"
+            },
+            {
               "narrative": "AI",
-              "change_pct": 2.12,
-              "strength": "Improving"
+              "change_pct": -0.53,
+              "strength": "Weakening"
             }
           ]
         }
@@ -350,7 +350,7 @@
       "signals": [
         {
           "indicator": "SOPR (7D MA)",
-          "value": "1.006",
+          "value": "1.004",
           "score": 0,
           "signal": "Neutral realized P/L regime",
           "detail": "0.98 <= sopr_ma < 1.00 or sopr momentum mixed",
@@ -358,7 +358,7 @@
         },
         {
           "indicator": "RHODL Ratio (7D MA)",
-          "value": "975",
+          "value": "980",
           "score": 0,
           "signal": "Mid-cycle holder balance",
           "detail": "800 <= rhodl_ma <= 1,800 or momentum not rising",
@@ -366,7 +366,7 @@
         },
         {
           "indicator": "Exchange Flow (7D Sum)",
-          "value": "+394",
+          "value": "+89",
           "score": 0,
           "signal": "Balanced exchange pressure",
           "detail": "-8,000 <= 7D net flow <= +8,000",
@@ -374,7 +374,7 @@
         },
         {
           "indicator": "LTH/STH Rotation",
-          "value": "-0.53%",
+          "value": "-0.12%",
           "score": 0,
           "signal": "Holder rotation is neutral",
           "detail": "-0.6% <= lth_ma - sth_ma <= +0.6%",
@@ -382,7 +382,7 @@
         },
         {
           "indicator": "Miner Behaviour (Puell 7D)",
-          "value": "0.982",
+          "value": "0.933",
           "score": 0,
           "signal": "Normal miner revenue regime",
           "detail": "0.6 <= puell_ma <= 1.35",
@@ -400,7 +400,7 @@
       "signals": [
         {
           "indicator": "Sector Rotation",
-          "value": "+0.73% avg (RWA -0.4%, DeFi +0.5%, Meme +0.7%, AI +2.1%)",
+          "value": "-0.50% avg (RWA +1.5%, DeFi -1.1%, Meme -1.9%, AI -0.5%)",
           "score": 0,
           "signal": "Neutral",
           "detail": "Average 24H category market-cap change across AI/RWA/DeFi/Meme",
@@ -409,34 +409,34 @@
       ],
       "metadata": {
         "sector_rotation": {
-          "display": "+0.73% avg (RWA -0.4%, DeFi +0.5%, Meme +0.7%, AI +2.1%)",
-          "average_change_pct": 0.7303810722871329,
+          "display": "-0.50% avg (RWA +1.5%, DeFi -1.1%, Meme -1.9%, AI -0.5%)",
+          "average_change_pct": -0.5009542432052193,
           "leaders": [
-            "RWA -0.4%",
-            "DeFi +0.5%",
-            "Meme +0.7%",
-            "AI +2.1%"
+            "RWA +1.5%",
+            "DeFi -1.1%",
+            "Meme -1.9%",
+            "AI -0.5%"
           ],
           "narratives": [
             {
               "narrative": "RWA",
-              "change_pct": -0.38,
-              "strength": "Neutral"
-            },
-            {
-              "narrative": "DeFi",
-              "change_pct": 0.47,
-              "strength": "Neutral"
-            },
-            {
-              "narrative": "Meme",
-              "change_pct": 0.72,
+              "change_pct": 1.47,
               "strength": "Firming"
             },
             {
+              "narrative": "DeFi",
+              "change_pct": -1.07,
+              "strength": "Weakening"
+            },
+            {
+              "narrative": "Meme",
+              "change_pct": -1.88,
+              "strength": "Weakening"
+            },
+            {
               "narrative": "AI",
-              "change_pct": 2.12,
-              "strength": "Improving"
+              "change_pct": -0.53,
+              "strength": "Weakening"
             }
           ]
         }

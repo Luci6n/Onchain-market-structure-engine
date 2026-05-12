@@ -30,6 +30,7 @@ import html
 import json
 import math
 import os
+import re
 import time
 import urllib.parse
 import urllib.request
@@ -888,7 +889,7 @@ def extract_features(df: pd.DataFrame, window: int = 7) -> pd.DataFrame:
 
     if "market_close" in featured.columns:
         featured["price_ma"] = featured["market_close"].rolling(window).mean()
-        featured["price_momentum"] = featured["market_close"].pct_change(window)
+        featured["price_momentum"] = featured["market_close"].pct_change(window, fill_method=None)
 
     featured["flag_sopr_capitulation"] = featured["sopr_ma"] < 1.0
     featured["flag_sopr_overheating"] = featured["sopr_ma"] > 1.05
@@ -1992,7 +1993,37 @@ def _heatmap_value_label(kind: str, value: Any) -> str:
     return SCORE_LABEL.get(int(numeric), str(value))
 
 
-def render_market_heatmap(summary: pd.DataFrame, days: int = 60) -> str:
+def _ui_heatmap_color(kind: str, value: Any) -> str:
+    if kind == "state":
+        state = str(value)
+        if "BULLISH" in state:
+            return "#84cc16" if "MILD" in state else "#2ecc71"
+        if "BEARISH" in state or "DISTRIBUTION" in state or "RISK OFF" in state:
+            return "#e74c3c"
+        if "CAUTION" in state:
+            return "#f39c12"
+        return "#4a6280"
+    numeric = _safe_float(value)
+    if numeric is None or pd.isna(numeric):
+        return "#1a2230"
+    if kind == "ratio":
+        if numeric >= 0.35:
+            return "#2ecc71"
+        if numeric >= 0.15:
+            return "#84cc16"
+        if numeric <= -0.35:
+            return "#e74c3c"
+        if numeric <= -0.15:
+            return "#f39c12"
+        return "#4a6280"
+    if numeric > 0:
+        return "#2ecc71"
+    if numeric < 0:
+        return "#e74c3c"
+    return "#4a6280"
+
+
+def render_market_heatmap(summary: pd.DataFrame, days: int = 25) -> str:
     heatmap = summary.tail(days).reset_index(drop=True)
     if heatmap.empty:
         return '<div class="heatmap-empty">No market history available.</div>'
@@ -2019,7 +2050,7 @@ def render_market_heatmap(summary: pd.DataFrame, days: int = 60) -> str:
         for idx, row in heatmap.iterrows():
             value = row.get(column)
             date = row.get("date", "")
-            color = _heatmap_color(kind, value)
+            color = _ui_heatmap_color(kind, value)
             value_label = _heatmap_value_label(kind, value)
             cells.append(
                 f'<div class="heatmap-cell" style="background:{color}" '
@@ -2033,12 +2064,12 @@ def render_market_heatmap(summary: pd.DataFrame, days: int = 60) -> str:
         )
 
     return f"""
-    <div class="interaction-bar">
+    <div class="hm-controls">
       <label>Timeframe
         <select id="heatmapTimeframe">
-          <option value="60" selected>60D</option>
-          <option value="30">30D</option>
+          <option value="25" selected>25D</option>
           <option value="14">14D</option>
+          <option value="7">7D</option>
         </select>
       </label>
       <label>Signal
@@ -2047,24 +2078,21 @@ def render_market_heatmap(summary: pd.DataFrame, days: int = 60) -> str:
           {''.join(f'<option value="{_html_cell(label.lower().replace("/", "-").replace(" ", "-"))}">{_html_cell(label)}</option>' for label, _, _ in rows)}
         </select>
       </label>
-      <button type="button" id="resetHeatmap">Reset</button>
+      <button type="button" id="resetHeatmap">RESET</button>
     </div>
-    <div class="heatmap-legend">
-      <span><i class="legend-bull"></i>Bullish</span>
-      <span><i class="legend-neutral"></i>Neutral</span>
-      <span><i class="legend-caution"></i>Caution</span>
-      <span><i class="legend-bear"></i>Bearish</span>
+    <div class="hm-legend">
+      <span><i style="background:#2ecc71;"></i>Bullish</span>
+      <span><i style="background:#4a6280;"></i>Neutral</span>
+      <span><i style="background:#f39c12;"></i>Caution</span>
+      <span><i style="background:#e74c3c;"></i>Bearish</span>
+      <span><i style="background:#1a2230;"></i>N/A</span>
     </div>
-    <div class="heatmap">
-      <div class="heatmap-label heatmap-label-muted">Date</div>
+    <div class="heatmap" style="min-width:600px;">
+      <div class="heatmap-label muted">Date</div>
       <div class="heatmap-cells">{date_labels}</div>
       {''.join(row_html)}
     </div>
-    <div class="drilldown-panel" id="heatmapDrilldown">
-      <span>Drill-down</span>
-      <strong>Click any heatmap cell</strong>
-      <p>Date, signal, and vote will appear here.</p>
-    </div>
+    <div class="drilldown" id="heatmapDrilldown">// Click a cell to drill down.</div>
     """
 
 
@@ -2200,12 +2228,13 @@ def render_probability_bars(regime: dict[str, Any]) -> str:
     if not probabilities:
         return '<div class="empty-note">No probability distribution available.</div>'
     ordered = sorted(probabilities.items(), key=lambda item: item[1], reverse=True)
+    leader = ordered[0][0] if ordered else ""
     return "\n".join(
         f"""
         <div class="prob-row">
-          <div class="prob-label">{_html_cell(name)}</div>
-          <div class="prob-track"><span data-prob-bar="{_html_cell(name)}" data-base="{int(value)}" style="width:{int(value)}%"></span></div>
-          <div class="prob-value" data-prob-value="{_html_cell(name)}">{int(value)}%</div>
+          <div class="prob-label{' active' if name == leader else ''}">{_html_cell(name)}</div>
+          <div class="prob-track"><div class="prob-fill{' leader' if name == leader else ''}" data-prob-bar="{_html_cell(name)}" data-base="{int(value)}" style="width:{int(value)}%"></div></div>
+          <div class="prob-value{' active' if name == leader else ''}" data-prob-value="{_html_cell(name)}">{int(value)}%</div>
         </div>
         """.strip()
         for name, value in ordered
@@ -2251,12 +2280,13 @@ def render_regime_wheel(regime: dict[str, Any]) -> str:
         x = 140 + 104 * math.cos(math.radians(angle))
         y = 140 + 104 * math.sin(math.radians(angle))
         klass = "wheel-node active" if label == active else "wheel-node"
+        node_label = _html_cell(label).replace(" ", "<br>", 1) if " " in label else _html_cell(label)
         items.append(
-            f'<div class="{klass}" style="left:{x:.1f}px; top:{y:.1f}px;" title="{_html_cell(label)}">{_html_cell(label)}</div>'
+            f'<div class="{klass}" style="left:{x:.1f}px; top:{y:.1f}px;" title="{_html_cell(label)}">{node_label}</div>'
         )
     return f"""
     <div class="regime-wheel">
-      <div class="wheel-ring"></div>
+      <div class="wheel-bg"></div>
       <div class="wheel-core">
         <span>Current</span>
         <strong>{_html_cell(active)}</strong>
@@ -2416,6 +2446,223 @@ def render_limitation_items(source: str) -> str:
     return "\n".join(f"<li>{_html_cell(item)}</li>" for item in items)
 
 
+def _replace_between(text: str, start: str, end: str, replacement: str) -> str:
+    start_idx = text.find(start)
+    if start_idx == -1:
+        return text
+    body_start = start_idx + len(start)
+    end_idx = text.find(end, body_start)
+    if end_idx == -1:
+        return text
+    return text[:body_start] + replacement + text[end_idx:]
+
+
+def _sub(pattern: str, replacement: str, text: str, flags: int = re.S) -> str:
+    return re.sub(pattern, replacement, text, count=1, flags=flags)
+
+
+def _score_class(score: int) -> str:
+    if score > 0:
+        return "td-bull"
+    if score < 0:
+        return "td-bear"
+    return "td-neut"
+
+
+def _chip_class(score: int) -> str:
+    if score > 0:
+        return "chip-bull"
+    if score < 0:
+        return "chip-bear"
+    return "chip-neut"
+
+
+def _signal_text_class(signal: SignalResult) -> str:
+    if signal.score > 0:
+        return "td-bull"
+    if signal.score < 0:
+        return "td-bear"
+    if "overheat" in signal.signal.lower() or "caution" in signal.signal.lower():
+        return "td-amber"
+    return "td-neut"
+
+
+def _regime_hero_html(label: str) -> str:
+    parts = label.replace("/", " / ").split()
+    if len(parts) <= 1:
+        return _html_cell(label)
+    return f"{_html_cell(' '.join(parts[:-1]))}<br><em>{_html_cell(parts[-1])}</em>"
+
+
+def render_redesigned_kpis(latest: ClassificationResult) -> str:
+    by_name = {signal.indicator: signal for signal in latest.signals}
+
+    def find(name: str) -> SignalResult | None:
+        return next((signal for key, signal in by_name.items() if name in key), None)
+
+    cards: list[tuple[str, str, str, str]] = []
+    for label, needle, fallback in (
+        ("SOPR · 7D MA", "SOPR", "n/a"),
+        ("RHODL Ratio", "RHODL", "n/a"),
+        ("Exchange Net Flow", "Exchange Flow", "n/a"),
+        ("LTH / STH", "LTH/STH", "n/a"),
+        ("Puell Multiple", "Miner", "n/a"),
+    ):
+        signal = find(needle)
+        value = _format_signal_value(signal) if signal else fallback
+        if "Exchange" in label and value != "n/a":
+            value = f"{value} BTC"
+        klass = "bull" if signal and signal.score > 0 else "bear" if signal and signal.score < 0 else "amber" if "SOPR" in label else ""
+        sub = signal.signal if signal else "Unavailable"
+        cards.append((label, value, klass, sub))
+
+    return "\n".join(
+        f"""
+        <div class="kpi">
+          <div class="kpi-label">{_html_cell(label)}</div>
+          <div class="kpi-value {klass}">{_html_cell(value)}</div>
+          <div class="kpi-sub">{_html_cell(sub)}</div>
+        </div>
+        """.strip()
+        for label, value, klass, sub in cards
+    )
+
+
+def render_redesigned_layer_rows(regime: dict[str, Any]) -> str:
+    rows = []
+    for key in ("macro", "capital", "onchain", "narrative"):
+        layer: LayerResult = regime[key]
+        percent = max(0, min(100, round((layer.ratio + 1) * 50)))
+        color = "var(--bull)" if layer.score > 0 else "var(--bear)" if layer.score < 0 else "var(--neut)"
+        score_class = _score_class(layer.score)
+        rows.append(
+            f"""
+            <div class="layer-row">
+              <div class="layer-name">{_html_cell(layer.layer)}</div>
+              <div class="layer-score {score_class}">{layer.score:+d}/+{layer.max_score}</div>
+              <div class="layer-bar-wrap"><div class="layer-bar" style="width:{percent}%; background:{color};"></div></div>
+              <div class="layer-status {score_class}">{_html_cell(layer.status)}</div>
+            </div>
+            """.strip()
+        )
+    return "\n".join(rows)
+
+
+def render_redesigned_indicator_rows(latest: ClassificationResult, summary: pd.DataFrame) -> str:
+    rows = []
+    spark_columns = {
+        "SOPR": "sopr_ma",
+        "RHODL": "rhodl_ma",
+        "Exchange Flow": "exchange_flow_7d",
+        "LTH/STH": "lth_sth_rotation",
+        "Miner": "puell_ma",
+        "Momentum": "market_return_1d",
+    }
+    for signal in latest.signals:
+        column = next((col for key, col in spark_columns.items() if key in signal.indicator), None)
+        spark = render_sparkline(summary[column]) if column and column in summary.columns else ""
+        rows.append(
+            f"""
+            <tr>
+              <td>{_html_cell(signal.indicator)}</td>
+              <td>{_html_cell(_format_signal_value(signal))}</td>
+              <td class="spark-cell">{spark}</td>
+              <td class="{_signal_text_class(signal)}">{_html_cell(signal.signal)}</td>
+              <td><span class="score-chip {_chip_class(signal.score)}">{signal.score:+d}</span></td>
+              <td style="color:var(--text3); font-size:11px;">{_html_cell(signal.detail)}</td>
+            </tr>
+            """.strip()
+        )
+    return "\n".join(rows)
+
+
+def render_redesigned_recent_rows(summary: pd.DataFrame) -> str:
+    rows = []
+    for row in summary.tail(14).itertuples():
+        score_class = _score_class(int(row.score))
+        state_class = "td-bull" if "BULL" in row.market_state else "td-bear" if "BEAR" in row.market_state or "DISTRIBUTION" in row.market_state else "td-neut"
+        rows.append(
+            f'<tr><td>{_html_cell(row.date)}</td><td class="{score_class}">{int(row.score):+d}</td><td class="{state_class}">{_html_cell(row.market_state)}</td><td>{_html_cell(row.conviction)}</td></tr>'
+        )
+    return "\n".join(rows)
+
+
+def render_redesigned_source_items(context: dict[str, Any]) -> str:
+    items = []
+    for key, value in context.items():
+        if isinstance(value, (dict, list)):
+            continue
+        klass = ""
+        display = _compact_context_value(value, max_len=120)
+        if "fresh" in str(value).lower() or "live" in str(value).lower() or key == "dune_refresh_status":
+            klass = ' style="color:var(--bull)"'
+        if "error" in key.lower() or "unauthorized" in str(value).lower():
+            klass = ' class="td-bear"'
+        items.append(f"<li><strong>{_html_cell(key)}</strong><span{klass}>{_html_cell(display)}</span></li>")
+    return "\n".join(items) or "<li><strong>source_status</strong><span>No context available</span></li>"
+
+
+def update_redesigned_report_shell(
+    template: str,
+    latest: ClassificationResult,
+    summary: pd.DataFrame,
+    source: str,
+    context: dict[str, Any],
+    backtest: dict[str, Any],
+    regime: dict[str, Any],
+) -> str:
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    execution_id = str(context.get("dune_execution_id", "n/a"))
+    short_exec = execution_id[:10] if execution_id != "n/a" else "n/a"
+    freshness = str(context.get("onchain_freshness_status", "unknown")).upper()
+    age_days = context.get("onchain_row_age_days", "n/a")
+    confidence = regime.get("confidence", {})
+    best_match = regime.get("historical_match", {}).get("best_match", {})
+    analog = best_match.get("period", "n/a")
+    similarity = float(best_match.get("similarity", 0)) * 100 if best_match else 0
+    ontology = str(regime.get("market_ontology", regime.get("market_regime", "Transition")))
+
+    html_text = template
+    html_text = _sub(r"<title>.*?</title>", "<title>On-Chain Intelligence // BTC Market Regime</title>", html_text, flags=re.S)
+    html_text = _sub(r'Generated <span>.*?</span>', f"Generated <span>{_html_cell(generated_at)}</span>", html_text)
+    html_text = _sub(r'Source <span>.*?</span>', f"Source <span>{_html_cell(source.upper())} LIVE</span>", html_text)
+    html_text = _sub(r'Dune Exec <span>.*?</span>', f"Dune Exec <span>{_html_cell(short_exec)}</span>", html_text)
+    html_text = _sub(r"// Market Regime Classification · .*?</div>", f"// Market Regime Classification · {latest.timestamp.date()}</div>", html_text)
+    html_text = _sub(r'<div class="hero-regime">.*?</div>\s*<div class="hero-meta">', f'<div class="hero-regime">{_regime_hero_html(ontology)}</div>\n      <div class="hero-meta">', html_text)
+    html_text = _sub(r"Regime · <span>.*?</span>", f"Regime · <span>{_html_cell(regime.get('market_regime', 'n/a'))}</span>", html_text)
+    html_text = _sub(r"Analog · <span>.*?</span>", f"Analog · <span>{_html_cell(analog)}</span>", html_text)
+    html_text = _sub(r"Similarity · <span>.*?</span>", f"Similarity · <span>{similarity:.1f}%</span>", html_text)
+    html_text = _sub(
+        r'Data Freshness · <span style="color:var\(--bull\)">.*?</span>',
+        f'Data Freshness · <span style="color:var(--bull)">{_html_cell(freshness)} ({age_days} days old)</span>',
+        html_text,
+    )
+    html_text = _sub(r'<div class="hero-score-num">.*?</div>', f'<div class="hero-score-num">{latest.total_score:+d}</div>', html_text)
+    html_text = _sub(r'<div class="hero-score-label">.*?</div>', f'<div class="hero-score-label">ON-CHAIN SCORE / +{latest.max_score}</div>', html_text)
+    html_text = _sub(
+        r'<div class="hero-conviction">.*?</div>',
+        f'<div class="hero-conviction">{_html_cell(confidence.get("label", latest.conviction))} CONFIDENCE · {confidence.get("score_pct", 0)}%</div>',
+        html_text,
+    )
+    html_text = _replace_between(html_text, '<div class="kpi-row">', "</div>\n\n  <!-- ═══════════════ S1", "\n" + render_redesigned_kpis(latest) + "\n  ")
+    html_text = _sub(r'<div class="regime-wheel">.*?</div>\s*</div>\s*<div style="margin-top: 14px;', render_regime_wheel(regime) + '\n      </div>\n      <div style="margin-top: 14px;', html_text)
+    html_text = _sub(r"2019 Bear Recovery · [0-9.]+% similarity", f"{_html_cell(analog)} · {similarity:.1f}% similarity", html_text)
+    html_text = _sub(r'<div class="prob-row">.*?</div>\s*\n\s*<div style="margin: 16px 0 10px;', render_probability_bars(regime) + '\n\n      <div style="margin: 16px 0 10px;', html_text)
+    html_text = _sub(r'<div class="panel-badge">AGG SCORE .*?</div>', f'<div class="panel-badge">AGG SCORE {regime.get("aggregate_score", 0):+.2f}</div>', html_text)
+    html_text = _sub(r'<div class="layer-row">.*?</div>\s*</div>\s*\n\n  <!-- ═══════════════ S2', render_redesigned_layer_rows(regime) + '\n  </div>\n\n  <!-- ═══════════════ S2', html_text)
+    html_text = _sub(
+        r'<div class="hm-controls">.*?<div class="drilldown" id="heatmapDrilldown">.*?</div>',
+        render_market_heatmap(summary, days=25),
+        html_text,
+    )
+    html_text = _sub(r'<div class="panel-badge">20\d\d-\d\d-\d\d</div>', f'<div class="panel-badge">{latest.timestamp.date()}</div>', html_text)
+    html_text = _sub(r'(<div class="panel-title">On-Chain Signal Breakdown</div>.*?<tbody>).*?(</tbody>)', r"\1" + render_redesigned_indicator_rows(latest, summary) + r"\2", html_text)
+    html_text = _sub(r'(<summary>Recent Classifications · Last 14 Days</summary>.*?<tbody>).*?(</tbody>)', r"\1" + render_redesigned_recent_rows(summary) + r"\2", html_text)
+    html_text = _sub(r'(<summary>Data Quality &amp; Source Status</summary>.*?<ul class="source-list">).*?(</ul>)', r"\1" + render_redesigned_source_items(context) + r"\2", html_text)
+    html_text = _sub(r"Generated 20\d\d-\d\d-\d\d \d\d:\d\d UTC · dune_exec: .*?</div>", f"Generated {generated_at} · dune_exec: {_html_cell(short_exec)}</div>", html_text)
+    return html_text
+
+
 def write_html_report(
     latest: ClassificationResult,
     summary: pd.DataFrame,
@@ -2425,6 +2672,15 @@ def write_html_report(
     backtest: dict[str, Any],
     regime: dict[str, Any],
 ) -> None:
+    if output_path.exists():
+        existing_html = output_path.read_text(encoding="utf-8")
+        if "On-Chain Intelligence // BTC Market Regime" in existing_html:
+            output_path.write_text(
+                update_redesigned_report_shell(existing_html, latest, summary, source, context, backtest, regime),
+                encoding="utf-8",
+            )
+            return
+
     latest_rows = "\n".join(
         f"""
         <tr>

@@ -1,6 +1,7 @@
 # On-Chain Market Intelligence Pipeline
 
-![On-chain market report preview](docs/report-preview.svg)
+<img width="1440" height="775" alt="Screenshot 2026-05-12 at 3 03 24 PM" src="https://github.com/user-attachments/assets/a032d0bd-4802-4592-9d75-e07ffe96043f" />
+
 
 An institutional-style crypto research pipeline that combines macro liquidity, capital flow, on-chain behavior, narrative rotation, and a rule-based regime engine into one terminal report, HTML dashboard, and machine-readable JSON output.
 

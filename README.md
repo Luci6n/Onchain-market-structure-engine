@@ -28,6 +28,12 @@ Each indicator contributes `-1`, `0`, or `+1`. The final market score maps to st
 
 ## Run Locally
 
+Install the pinned runtime dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
 Run the full pipeline with deterministic demo data:
 
 ```bash
@@ -47,6 +53,77 @@ Generated artifacts:
 - `reports/source_context.json`
 - `reports/backtest_report.json`
 - `reports/regime_report.json`
+
+## Public Static Demo V1
+
+V1 does not require secrets. Use deterministic demo mode to generate a public
+static report that can be hosted as the first live Chainstox Lab product:
+
+```bash
+python3 Blockchain.py --demo --days 180
+```
+
+Live mode is available when the Dune configuration exists:
+
+```bash
+python3 Blockchain.py
+```
+
+Required live environment variables:
+
+```bash
+export DUNE_API_KEY="..."
+export DUNE_QUERY_ID="..."
+```
+
+Optional live environment variables:
+
+```bash
+export ETHERSCAN_API_KEY="..."
+export CARDANOSCAN_API_KEY="..."
+export SOLSCAN_API_KEY="..."
+export MARKET_SYMBOL="BTC-USD"
+export ONCHAIN_DAYS="180"
+```
+
+Generated public artifacts:
+
+- `reports/onchain_report.html`
+- `reports/onchain_summary.csv`
+- `reports/source_context.json`
+- `reports/backtest_report.json`
+- `reports/regime_report.json`
+
+Recommended V1 deployment: publish the generated `public-site/` directory as a
+static Cloudflare Pages product and link the HTML report from `alvin-lim.com/lab`.
+
+## Cloudflare Pages Deployment
+
+The public deployment bundle lives in `public-site/`.
+
+Cloudflare Pages settings:
+
+```text
+Project name: onchain-intelligence
+Build command: none
+Build output directory: public-site
+Custom domain: onchain.alvin-lim.com
+```
+
+Before deploying, regenerate the report and copy only the public artifacts into
+`public-site/`:
+
+```bash
+python3 Blockchain.py --demo --days 180
+cp reports/onchain_report.html public-site/onchain_report.html
+cp reports/onchain_summary.csv public-site/onchain_summary.csv
+cp reports/source_context.json public-site/source_context.json
+cp reports/backtest_report.json public-site/backtest_report.json
+cp reports/regime_report.json public-site/regime_report.json
+```
+
+Do not copy `.env`, caches, Python bytecode, local IDE files, or private API
+keys into `public-site/`.
 
 Print the Dune SQL schema template:
 
